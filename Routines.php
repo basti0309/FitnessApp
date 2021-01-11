@@ -29,10 +29,11 @@
     
         <body>
         <form action="index.html?x=2" method="post" enctype="multipart/form-data" > 
+              <input type="text" id="newRoutine">
               <button type="button" id="add" class="btn btn-primary btn-sm">Add Routine</button>
         </form> 
 
-          <ul class="list-group">
+          <ul class="list-group" id = "routineList">
             <li class="list-group-item">
               <div class="routines">
                 Push
