@@ -117,13 +117,13 @@ const Running = (() => {
     if (max) return { hrMax: max, basis: `from your highest recorded HR (${max} bpm)` };
     return { hrMax: 190, basis: "default estimate — set Max HR in ⚙ Settings" };
   }
-  function deriveThresholdPace(runs) {
+  function deriveThresholdPace(runs, anchorInfo) {
     const o = Settings.thrPaceOverride();
     if (o) return { pace: o, basis: "from your profile" };
-    const best = Zones.bestEffort(runs);
-    if (best) {
-      const pace = Zones.riegel(best.distanceKm, best.durationSec, 10) / 10; // ~10k pace as LT proxy
-      return { pace, basis: `≈ your 10k pace, from your best effort (${best.distanceKm} km in ${Zones.fmtTime(best.durationSec)})` };
+    if (anchorInfo && anchorInfo.anchor) {
+      const a = anchorInfo.anchor;
+      const pace = Zones.riegel(a.km, a.sec, 10) / 10; // ~10k pace as LT proxy
+      return { pace, basis: `≈ your 10k pace, from your best ${a.label} effort` };
     }
     return null;
   }
@@ -165,7 +165,8 @@ const Running = (() => {
       Zones.hrZones(hrMax).map((z) =>
         `<tr><td><b>${z.z}</b></td><td>${z.name}</td><td>${z.lo}–${z.hi}</td></tr>`).join("");
 
-    const thr = deriveThresholdPace(runs);
+    const bests = Zones.bestEfforts(runs);
+    const thr = deriveThresholdPace(runs, Zones.pickAnchor(bests, hrMax));
     if (!thr) {
       el.paceBasis.textContent = "Log a run (or set a threshold pace in ⚙ Settings) to see pace zones.";
       el.paceZoneTable.innerHTML = "";
@@ -180,16 +181,35 @@ const Running = (() => {
 
   function renderPredictions() {
     const runs = RunStore.all();
-    const best = Zones.bestEffort(runs);
-    if (!best) {
-      el.predBasis.textContent = "Log a run with distance and time to see race predictions.";
+    const { hrMax } = deriveHrMax(runs);
+    const bests = Zones.bestEfforts(runs);
+
+    // Best-efforts table (fastest segment per distance, with effort).
+    el.emptyBest.style.display = bests.length ? "none" : "block";
+    el.bestTable.innerHTML = !bests.length ? "" :
+      `<tr><th>Distance</th><th>Time</th><th>Pace</th><th>HR</th><th>Effort</th></tr>` +
+      bests.map((b) => {
+        const frac = b.hr && hrMax ? b.hr / hrMax : null;
+        return `<tr><td>${b.label}</td><td><b>${Zones.fmtTime(b.sec)}</b></td><td>${Zones.fmtPace(b.pace)}</td>` +
+          `<td>${b.hr || "—"}</td><td>${Zones.effortLabel(frac)}</td></tr>`;
+      }).join("");
+
+    // Predictions anchored on the best hard effort.
+    const picked = Zones.pickAnchor(bests, hrMax);
+    if (!picked) {
+      el.predBasis.textContent = "Log a run with distance and time (splits help) to see race predictions.";
       el.predTable.innerHTML = "";
       return;
     }
-    el.predBasis.textContent = `From your best effort: ${best.distanceKm} km in ${Zones.fmtTime(best.durationSec)} (${escape(best.title || fmtDate(best.date))}).`;
+    const a = picked.anchor;
+    const effort = Zones.effortLabel(picked.frac);
+    el.predBasis.innerHTML =
+      `Anchored on your fastest <b>${a.label}</b>: ${Zones.fmtTime(a.sec)} (${Zones.fmtPace(a.pace)})` +
+      `${a.hr ? ` at ${a.hr} bpm · ${effort} effort` : ""}.` +
+      (picked.hard ? "" : " ⚠ No clearly hard effort found yet — these are likely conservative. Log an all-out or race effort for a sharper estimate.");
     el.predTable.innerHTML =
       `<tr><th>Distance</th><th>Time</th><th>Pace</th></tr>` +
-      Zones.predictions(best.distanceKm, best.durationSec).map((p) =>
+      Zones.predictions(a.km, a.sec).map((p) =>
         `<tr><td>${p.label}</td><td><b>${Zones.fmtTime(p.sec)}</b></td><td>${Zones.fmtPace(p.pace)}</td></tr>`).join("");
   }
 
@@ -239,6 +259,8 @@ const Running = (() => {
       paceZoneTable: document.getElementById("paceZoneTable"),
       predBasis: document.getElementById("predBasis"),
       predTable: document.getElementById("predTable"),
+      bestTable: document.getElementById("bestTable"),
+      emptyBest: document.getElementById("emptyBest"),
     };
 
     el.date.value = new Date().toISOString().slice(0, 10);

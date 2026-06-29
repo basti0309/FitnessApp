@@ -39,20 +39,33 @@ const Drive = (() => {
   function gisReady() {
     return typeof google !== "undefined" && google.accounts && google.accounts.oauth2;
   }
+  let pending = null;
+  function ensureClient() {
+    if (tokenClient) return;
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CONFIG.googleClientId,
+      scope: SCOPE,
+      callback: (resp) => {
+        const p = pending; pending = null;
+        if (!p) return;
+        if (resp.error) return p.reject(new Error(resp.error));
+        accessToken = resp.access_token;
+        p.resolve(accessToken);
+      },
+      // fires for non-OAuth failures: popup blocked/closed, etc.
+      error_callback: (err) => {
+        const p = pending; pending = null;
+        if (p) p.reject(new Error(err.type || "popup_failed"));
+      },
+    });
+  }
   function getToken(interactive) {
     return new Promise((resolve, reject) => {
-      if (!gisReady()) return reject(new Error("Google sign-in not loaded yet — try again in a moment."));
-      if (!tokenClient) {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: CONFIG.googleClientId, scope: SCOPE, callback: () => {},
-        });
-      }
-      tokenClient.callback = (resp) => {
-        if (resp.error) return reject(new Error(resp.error));
-        accessToken = resp.access_token;
-        resolve(accessToken);
-      };
-      tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" });
+      if (!gisReady()) return reject(new Error("Google sign-in didn't load (check network / blockers)."));
+      ensureClient();
+      pending = { resolve, reject };
+      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
+      catch (e) { pending = null; reject(e); }
     });
   }
 
