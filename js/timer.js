@@ -188,17 +188,21 @@ const Timer = (() => {
     el.startPauseBtn.textContent = "Start";
     el.roundLabel.textContent = "Nice work! 🔥";
 
-    // Build a summary the Log tab can pre-fill from.
+    // Build a summary the Log tab can pre-fill from (structure carries over).
     if (mode === "tabata") {
-      const rounds = clampInt(el.tabRounds.value, 1, 99, 8);
-      summary = { type: "tabata", label: `Tabata ${rounds} rounds` };
+      summary = {
+        type: "tabata",
+        rounds: clampInt(el.tabRounds.value, 1, 99, 8),
+        workSec: clampInt(el.tabWork.value, 1, 600, 20),
+        restSec: clampInt(el.tabRest.value, 0, 600, 10),
+      };
       el.clockDisplay.textContent = "DONE";
     } else if (mode === "amrap") {
-      summary = { type: "amrap", label: `AMRAP ${fmt(segments[0].dur)}` };
+      summary = { type: "amrap", durationSec: segments[0].dur };
       el.clockDisplay.textContent = fmt(segments[0].dur);
     } else {
       const t = finalElapsed != null ? finalElapsed : currentElapsedMs() / 1000;
-      summary = { type: "fortime", label: "For Time", time: fmt(t) };
+      summary = { type: "fortime", timeStr: fmt(t) };
       el.clockDisplay.textContent = fmt(t);
     }
     el.logResultBtn.hidden = false;

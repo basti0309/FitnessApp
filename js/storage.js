@@ -1,6 +1,6 @@
 /* Tiny persistence layer over localStorage. */
 const Store = (() => {
-  const KEY = "wodbox.entries.v1";
+  const KEY = "wodbox.entries.v2";
 
   function read() {
     try {

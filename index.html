@@ -63,7 +63,6 @@
       <form id="logForm" class="card form">
         <h2>Log a WOD</h2>
         <label>Date<input type="date" id="fDate" required></label>
-        <label>WOD name<input type="text" id="fName" placeholder="e.g. Fran, Cindy, Murph" required></label>
 
         <label>Type
           <select id="fType">
@@ -73,23 +72,51 @@
           </select>
         </label>
 
-        <!-- For Time result -->
+        <!-- structure of the WOD -->
+        <div class="struct" data-for="fortime">
+          <label>Rounds<input type="number" id="sRounds" min="1" value="5"></label>
+        </div>
+        <div class="struct hidden" data-for="amrap">
+          <div class="row">
+            <label>Minutes<input type="number" id="sAmrapMin" min="0" value="12"></label>
+            <label>Seconds<input type="number" id="sAmrapSec" min="0" max="59" value="0"></label>
+          </div>
+        </div>
+        <div class="struct hidden" data-for="tabata">
+          <div class="row">
+            <label>Rounds<input type="number" id="sTabRounds" min="1" value="8"></label>
+            <label>Work s<input type="number" id="sTabWork" min="1" value="20"></label>
+            <label>Rest s<input type="number" id="sTabRest" min="0" value="10"></label>
+          </div>
+        </div>
+
+        <!-- exercise builder: the WOD is its exercises -->
+        <div class="exercises">
+          <div class="ex-head"><span>Exercises</span><span class="muted">reps · weight</span></div>
+          <ul id="exList" class="ex-list"></ul>
+          <button type="button" class="btn btn-ghost btn-sm" id="addExercise">+ Add exercise</button>
+        </div>
+        <datalist id="exNames"></datalist>
+
+        <!-- look up prior results for this exact WOD (weight ignored) -->
+        <button type="button" class="btn btn-link" id="checkPrev">🔍 Check previous results</button>
+        <div id="prevPanel" class="prev-panel hidden"></div>
+
+        <!-- result of this attempt -->
         <div class="result-fields" data-for="fortime">
           <label>Result time<input type="text" id="rFortime" placeholder="mm:ss e.g. 8:42"></label>
         </div>
-        <!-- AMRAP result -->
         <div class="result-fields hidden" data-for="amrap">
           <div class="row">
             <label>Rounds<input type="number" id="rRounds" min="0" placeholder="0"></label>
             <label>+ Reps<input type="number" id="rReps" min="0" placeholder="0"></label>
           </div>
         </div>
-        <!-- Tabata result -->
         <div class="result-fields hidden" data-for="tabata">
           <label>Score (total reps / lowest round)<input type="text" id="rTabata" placeholder="e.g. 96 total / 11 low"></label>
         </div>
 
-        <label>Notes<textarea id="fNotes" rows="2" placeholder="Weights, scaling, how it felt…"></textarea></label>
+        <label>Notes<textarea id="fNotes" rows="2" placeholder="Scaling, how it felt…"></textarea></label>
         <button type="submit" class="btn btn-primary">Save WOD</button>
       </form>
     </section>
