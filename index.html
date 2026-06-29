@@ -231,12 +231,17 @@
 
       <div class="card">
         <h2>Cloud sync</h2>
-        <p class="muted" id="driveStatus">Google Drive sync isn't configured yet. Paste a Google OAuth Client ID into <code>js/config.js</code> to enable cross-device sync.</p>
+        <p class="muted" id="driveStatus">Sign in with Google to sync your WODs and runs across devices via your Drive.</p>
+        <div class="controls">
+          <button type="button" class="btn btn-primary" id="driveConnect">Connect Google Drive</button>
+          <button type="button" class="btn btn-ghost" id="driveSync" hidden>Sync now</button>
+        </div>
       </div>
     </section>
 
   </main>
 
+  <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="js/config.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/storage.js"></script>
@@ -246,6 +251,7 @@
   <script src="js/timer.js"></script>
   <script src="js/log.js"></script>
   <script src="js/running.js"></script>
+  <script src="js/gdrive.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

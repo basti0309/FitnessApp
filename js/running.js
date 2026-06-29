@@ -17,10 +17,12 @@ const Running = (() => {
       run.id = String(Date.now());
       list.push(run);
       localStorage.setItem(RKEY, JSON.stringify(list));
+      document.dispatchEvent(new Event("data-changed"));
       return run;
     },
     remove(id) {
       localStorage.setItem(RKEY, JSON.stringify(this.all().filter((r) => r.id !== id)));
+      document.dispatchEvent(new Event("data-changed"));
     },
   };
 
