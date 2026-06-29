@@ -17,6 +17,8 @@
     <button class="tab is-active" data-tab="timer" role="tab">Timer</button>
     <button class="tab" data-tab="log" role="tab">Log WOD</button>
     <button class="tab" data-tab="history" role="tab">History</button>
+    <button class="tab" data-tab="run" role="tab">Run</button>
+    <button class="tab" data-tab="settings" role="tab">⚙</button>
   </nav>
 
   <main class="container">
@@ -131,12 +133,119 @@
       <p class="empty" id="emptyHistory">No WODs logged yet. Go crush one. 💪</p>
     </section>
 
+    <!-- ============ RUN ============ -->
+    <section id="tab-run" class="panel">
+      <div class="seg" id="runModes">
+        <button class="seg-btn is-active" data-rmode="add">Log a run</button>
+        <button class="seg-btn" data-rmode="zones">Zones</button>
+        <button class="seg-btn" data-rmode="predict">Predictions</button>
+      </div>
+
+      <!-- ---- add a run ---- -->
+      <div id="runAdd">
+        <div class="card">
+          <h2>Add a run</h2>
+          <label class="filelabel">
+            <input type="file" id="runShots" accept="image/*" multiple hidden>
+            <span>📷 Upload screenshot(s) — intervals, heart rate, summary</span>
+          </label>
+          <div id="shotPreview" class="shot-preview"></div>
+          <button class="btn btn-primary" id="extractBtn" disabled>Read with AI ✨</button>
+          <p class="muted ai-note" id="aiNote">Claude reads your screenshots and fills the form below. Set your API key in ⚙ Settings first.</p>
+        </div>
+
+        <form id="runForm" class="card form">
+          <h2>Run details</h2>
+          <label>Date<input type="date" id="rnDate" required></label>
+          <label>Title<input type="text" id="rnTitle" placeholder="e.g. Tempo 5×1k"></label>
+          <div class="row">
+            <label>Distance (km)<input type="number" id="rnDist" step="0.01" min="0" placeholder="0"></label>
+            <label>Time (mm:ss)<input type="text" id="rnTime" placeholder="e.g. 42:30"></label>
+          </div>
+          <div class="row">
+            <label>Avg HR<input type="number" id="rnAvgHr" min="0" placeholder="bpm"></label>
+            <label>Max HR<input type="number" id="rnMaxHr" min="0" placeholder="bpm"></label>
+          </div>
+
+          <div class="intervals">
+            <div class="ex-head"><span>Intervals</span><span class="muted">opt.</span></div>
+            <ul id="ivList" class="iv-list"></ul>
+            <button type="button" class="btn btn-ghost btn-sm" id="addIv">+ Add interval</button>
+          </div>
+
+          <label>Notes<textarea id="rnNotes" rows="2" placeholder="How it felt, route, weather…"></textarea></label>
+          <button type="submit" class="btn btn-primary">Save run</button>
+        </form>
+
+        <div class="history-head"><h2>Run history</h2><span class="muted" id="runCount"></span></div>
+        <ul class="wod-list" id="runList"></ul>
+        <p class="empty" id="emptyRuns">No runs logged yet. Lace up. 🏃</p>
+      </div>
+
+      <!-- ---- zones ---- -->
+      <div id="runZones" class="hidden">
+        <div class="card">
+          <h2>Heart-rate zones</h2>
+          <p class="muted" id="hrBasis"></p>
+          <table class="ztable" id="hrZoneTable"></table>
+        </div>
+        <div class="card">
+          <h2>Pace zones</h2>
+          <p class="muted" id="paceBasis"></p>
+          <table class="ztable" id="paceZoneTable"></table>
+        </div>
+      </div>
+
+      <!-- ---- predictions ---- -->
+      <div id="runPredict" class="hidden">
+        <div class="card">
+          <h2>Race predictions</h2>
+          <p class="muted" id="predBasis"></p>
+          <table class="ztable" id="predTable"></table>
+          <p class="muted prev-foot">Riegel model (t₂ = t₁·(d₂/d₁)^1.06) from your best recent effort. Estimates, not guarantees.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="tab-settings" class="panel">
+      <form id="settingsForm" class="card form">
+        <h2>Settings</h2>
+
+        <label>Anthropic API key
+          <input type="password" id="setKey" placeholder="sk-ant-…" autocomplete="off">
+        </label>
+        <p class="muted">Used in your browser only to read run screenshots with Claude. Stored on this device, never uploaded. Get one at console.anthropic.com and set a spend limit.</p>
+
+        <h2>Profile (optional)</h2>
+        <p class="muted">Leave blank to auto-derive from your runs.</p>
+        <div class="row">
+          <label>Max HR<input type="number" id="setHrMax" min="0" placeholder="auto"></label>
+          <label>Threshold HR<input type="number" id="setLthr" min="0" placeholder="auto"></label>
+        </div>
+        <label>Threshold pace (mm:ss /km)<input type="text" id="setThrPace" placeholder="auto"></label>
+
+        <button type="submit" class="btn btn-primary">Save settings</button>
+        <p class="muted" id="setSaved"></p>
+      </form>
+
+      <div class="card">
+        <h2>Cloud sync</h2>
+        <p class="muted" id="driveStatus">Google Drive sync isn't configured yet. Paste a Google OAuth Client ID into <code>js/config.js</code> to enable cross-device sync.</p>
+      </div>
+    </section>
+
   </main>
 
+  <script src="js/config.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/storage.js"></script>
+  <script src="js/zones.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/settings.js"></script>
   <script src="js/timer.js"></script>
   <script src="js/log.js"></script>
+  <script src="js/running.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
