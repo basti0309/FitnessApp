@@ -199,10 +199,16 @@
       <!-- ---- predictions ---- -->
       <div id="runPredict" class="hidden">
         <div class="card">
+          <h2>Best efforts</h2>
+          <p class="muted">Fastest segment at each distance across your runs (from your splits), with the heart rate on that segment.</p>
+          <table class="ztable" id="bestTable"></table>
+          <p class="empty" id="emptyBest">Log a run with splits to see your best efforts.</p>
+        </div>
+        <div class="card">
           <h2>Race predictions</h2>
           <p class="muted" id="predBasis"></p>
           <table class="ztable" id="predTable"></table>
-          <p class="muted prev-foot">Riegel model (t₂ = t₁·(d₂/d₁)^1.06) from your best recent effort. Estimates, not guarantees.</p>
+          <p class="muted prev-foot">Riegel model (t₂ = t₁·(d₂/d₁)^1.06), anchored on your best hard effort. Estimates, not guarantees.</p>
         </div>
       </div>
     </section>

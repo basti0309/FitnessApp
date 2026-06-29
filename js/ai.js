@@ -40,9 +40,11 @@ const AI = (() => {
   const PROMPT =
     "These screenshots are from a running watch or app and together describe ONE run " +
     "(summary stats, heart rate, and/or lap/interval splits). Extract the data. " +
-    "Convert all distances to kilometres and all times to seconds. If splits/laps are " +
-    "shown, fill the intervals array (one entry per lap). Use null for anything not shown — " +
-    "do not guess. Return only the structured object.";
+    "Convert all distances to kilometres and all times to seconds. " +
+    "IMPORTANT: capture EVERY split/lap row you can see into the intervals array, in order, " +
+    "one entry per split — include each split's distance, time, and its average heart rate " +
+    "when shown. Per-kilometre or per-lap splits are essential. Use null for anything not " +
+    "shown — do not guess or interpolate. Return only the structured object.";
 
   // files: File[] (images). Returns the parsed run object.
   async function extractFromImages(files) {
