@@ -12,6 +12,7 @@ const Store = (() => {
 
   function write(list) {
     localStorage.setItem(KEY, JSON.stringify(list));
+    document.dispatchEvent(new Event("data-changed"));
   }
 
   return {

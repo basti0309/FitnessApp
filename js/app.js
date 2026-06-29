@@ -13,6 +13,15 @@ const App = (() => {
 
     Timer.init();
     Log.init();
+    Settings.init();
+    Running.init();
+    Drive.init();
+
+    // when a remote Drive pull replaces local data, refresh the views
+    document.addEventListener("data-applied", () => {
+      Log.render();
+      Running.refresh();
+    });
 
     // "Log this result" jumps from a finished timer to a pre-filled form.
     document.getElementById("logResultBtn").addEventListener("click", () => {
