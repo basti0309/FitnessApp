@@ -108,6 +108,32 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); bo
 .form .row { display: flex; gap: 10px; }
 .result-fields .row label { flex: 1; }
 
+/* ---------- WOD structure + exercise builder ---------- */
+.struct { margin-top: 4px; }
+.btn-sm { padding: 9px 12px; font-size: .9rem; }
+
+.exercises { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(0,0,0,.12); }
+.ex-head { display: flex; justify-content: space-between; font-size: .8rem; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.ex-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ex-row { display: grid; grid-template-columns: 1fr 64px 84px auto; gap: 6px; align-items: center; }
+.ex-row input { padding: 9px 10px; }
+.ex-row .ex-del { background: none; border: 0; color: var(--muted); font-size: 1rem; cursor: pointer; padding: 4px 6px; }
+.ex-row .ex-del:hover { color: var(--accent); }
+
+/* ---------- previous results panel ---------- */
+.prev-panel { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: linear-gradient(160deg, #102a1a, var(--bg-card)); }
+.prev-panel.hidden { display: none; }
+.prev-head { font-weight: 700; color: var(--rest); margin-bottom: 8px; }
+.prev-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.prev-list li { border-top: 1px solid var(--line); padding-top: 8px; }
+.prev-list li:first-child { border-top: 0; padding-top: 0; }
+.prev-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prev-result { font-size: 1.15rem; font-weight: 800; }
+.prev-date { color: var(--muted); font-size: .8rem; }
+.prev-weights { color: var(--txt); font-size: .85rem; margin-top: 3px; }
+.prev-notes { color: var(--muted); font-size: .82rem; margin-top: 3px; white-space: pre-wrap; }
+.prev-foot { margin: 10px 0 0; font-size: .76rem; }
+
 /* ---------- history ---------- */
 .history-head { display: flex; align-items: baseline; justify-content: space-between; }
 .muted { color: var(--muted); font-size: .85rem; }
@@ -123,6 +149,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); bo
 .badge.fortime { background: #2c3a52; color: #8ec0ff; }
 .badge.amrap { background: #143028; color: #57e0a0; }
 .badge.tabata { background: #3a1420; color: #ff8aa6; }
+.wod-ex { font-size: .9rem; color: var(--txt); margin-top: 5px; }
 .wod-result { font-size: 1.05rem; font-weight: 700; margin-top: 4px; }
 .wod-meta { color: var(--muted); font-size: .8rem; margin-top: 2px; }
 .wod-notes { color: var(--muted); font-size: .85rem; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
