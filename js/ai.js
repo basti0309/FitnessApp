@@ -46,13 +46,16 @@ const AI = (() => {
     "when shown. Per-kilometre or per-lap splits are essential. Use null for anything not " +
     "shown — do not guess or interpolate. Return only the structured object.";
 
-  // files: File[] (images). Returns the parsed run object.
-  async function extractFromImages(files) {
+  // blocks: [{ media_type, data(base64) }] from screenshots or video frames.
+  async function extractRun(blocks) {
     const key = Settings.apiKey();
     if (!key) throw new Error("No API key set. Add your Anthropic key in ⚙ Settings.");
-    if (!files.length) throw new Error("Add at least one screenshot.");
+    if (!blocks.length) throw new Error("Add at least one screenshot or a video.");
 
-    const images = await Promise.all([...files].map(toImageBlock));
+    const images = blocks.map((b) => ({
+      type: "image",
+      source: { type: "base64", media_type: b.media_type, data: b.data },
+    }));
     const body = {
       model: CONFIG.claudeModel,
       max_tokens: 2048,
@@ -82,20 +85,15 @@ const AI = (() => {
     return JSON.parse(text);
   }
 
-  function toImageBlock(file) {
+  // File (image) → { media_type, data } block.
+  function fileToBlock(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const data = String(reader.result).split(",")[1]; // strip data: prefix
-        resolve({
-          type: "image",
-          source: { type: "base64", media_type: file.type || "image/png", data },
-        });
-      };
+      reader.onload = () => resolve({ media_type: file.type || "image/png", data: String(reader.result).split(",")[1] });
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
   }
 
-  return { extractFromImages };
+  return { extractRun, fileToBlock };
 })();

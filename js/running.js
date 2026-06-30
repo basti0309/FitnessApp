@@ -2,7 +2,7 @@
    and Riegel race predictions derived from logged runs. */
 const Running = (() => {
   let el = {};
-  let pendingFiles = [];
+  let pendingBlocks = [];   // [{ media_type, data }] from screenshots or video frames
 
   // ---------- storage ----------
   const RKEY = "wodbox.runs.v1";
@@ -67,29 +67,45 @@ const Running = (() => {
   }
 
   // ---------- screenshots ----------
-  function onFiles(files) {
-    pendingFiles = [...files];
+  async function onFiles(files) {
+    pendingBlocks = [];
     el.shotPreview.innerHTML = "";
-    pendingFiles.forEach((f) => {
+    el.extractBtn.disabled = true;
+    for (const f of [...files]) {
+      if (f.type.startsWith("video/")) {
+        try {
+          const frames = await VideoFrames.extract(f, {
+            onProgress: (p) => { el.aiNote.textContent = `Extracting frames from video… ${Math.round(p * 100)}%`; },
+          });
+          pendingBlocks.push(...frames);
+          el.aiNote.textContent = `Got ${frames.length} frames from the video — tap “Read with AI”.`;
+        } catch (err) {
+          el.aiNote.textContent = "⚠ " + err.message;
+        }
+      } else if (f.type.startsWith("image/")) {
+        pendingBlocks.push(await AI.fileToBlock(f));
+      }
+    }
+    pendingBlocks.forEach((b) => {
       const img = document.createElement("img");
-      img.src = URL.createObjectURL(f);
+      img.src = `data:${b.media_type};base64,${b.data}`;
       img.className = "shot-thumb";
       el.shotPreview.appendChild(img);
     });
-    el.extractBtn.disabled = pendingFiles.length === 0;
+    el.extractBtn.disabled = pendingBlocks.length === 0;
   }
 
   async function extract() {
     el.extractBtn.disabled = true;
-    el.aiNote.textContent = "Reading screenshots with Claude…";
+    el.aiNote.textContent = "Reading with Claude…";
     try {
-      const run = await AI.extractFromImages(pendingFiles);
+      const run = await AI.extractRun(pendingBlocks);
       fillForm(run);
-      el.aiNote.textContent = "Filled from screenshots — review and save. ✓";
+      el.aiNote.textContent = "Filled in — review and save. ✓";
     } catch (err) {
       el.aiNote.textContent = "⚠ " + err.message;
     } finally {
-      el.extractBtn.disabled = pendingFiles.length === 0;
+      el.extractBtn.disabled = pendingBlocks.length === 0;
     }
   }
 
@@ -295,7 +311,7 @@ const Running = (() => {
       el.date.value = new Date().toISOString().slice(0, 10);
       el.ivList.innerHTML = "";
       el.shotPreview.innerHTML = "";
-      pendingFiles = [];
+      pendingBlocks = [];
       el.extractBtn.disabled = true;
       el.aiNote.textContent = "Saved ✓ — log another, or check Zones & Predictions.";
       refresh();
