@@ -3,6 +3,7 @@
 const Sound = (() => {
   let ctx = null;
   let muted = false;
+  let primed = false;
 
   // Lazily create / resume the AudioContext. Must be triggered by a user
   // gesture (e.g. pressing Start) or browsers will keep it suspended.
@@ -34,7 +35,22 @@ const Sound = (() => {
   }
 
   return {
-    unlock() { ensure(); },
+    // Call on a user gesture (Start press). Resumes the context and plays a
+    // 1-sample silent buffer to satisfy autoplay-unlock on iOS/Safari, so the
+    // first real beeps aren't dropped.
+    unlock() {
+      const c = ensure();
+      if (c && !primed) {
+        primed = true;
+        try {
+          const buf = c.createBuffer(1, 1, 22050);
+          const src = c.createBufferSource();
+          src.buffer = buf;
+          src.connect(c.destination);
+          src.start(0);
+        } catch (e) { /* ignore */ }
+      }
+    },
     toggleMute() { muted = !muted; return muted; },
     isMuted() { return muted; },
 

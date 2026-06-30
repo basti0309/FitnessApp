@@ -21,6 +21,11 @@ const Timer = (() => {
   let lastShownSec = null;    // for detecting whole-second transitions
   let raf = null;
 
+  const LEAD_IN = 10;         // seconds of pre-start countdown (all modes)
+  let leadIn = false;         // currently in the GET READY countdown
+  let begun = false;          // the actual workout has started (past lead-in)
+  let totalRounds = 0;        // tabata rounds, for the lead-in label
+
   let summary = null;     // result handed to the Log tab
 
   // ---------- helpers ----------
@@ -48,6 +53,7 @@ const Timer = (() => {
       const rounds = clampInt(el.tabRounds.value, 1, 99, 8);
       const work = clampInt(el.tabWork.value, 1, 600, 20);
       const rest = clampInt(el.tabRest.value, 0, 600, 10);
+      totalRounds = rounds;
       for (let r = 1; r <= rounds; r++) {
         segments.push({ type: "work", dur: work, round: r, total: rounds });
         if (rest > 0 && r < rounds) {
@@ -73,10 +79,14 @@ const Timer = (() => {
   function start() {
     Sound.unlock();
     if (finished) reset();
-    if (!running && elapsedBeforePause === 0 && segIndex === 0) {
+    // first press → build the plan and enter the 10s GET READY lead-in
+    if (!begun && !leadIn) {
       buildPlan();
-      Sound.startTune();
-      if (mode === "tabata") applyPhaseClass("work");
+      leadIn = true;
+      elapsedBeforePause = 0;
+      segIndex = 0;
+      lastShownSec = null;
+      applyPhaseClass(null);
     }
     running = true;
     finished = false;
@@ -84,6 +94,23 @@ const Timer = (() => {
     el.startPauseBtn.textContent = "Pause";
     el.logResultBtn.hidden = true;
     loop();
+  }
+
+  // lead-in finished → kick off the actual workout with a clear "go" cue
+  function beginWorkout() {
+    leadIn = false;
+    begun = true;
+    elapsedBeforePause = 0;
+    phaseStart = now();
+    lastShownSec = null;
+    if (countUp) {
+      Sound.startTune();
+    } else {
+      const seg = segments[0];
+      if (seg.type === "work") { applyPhaseClass("work"); Sound.workStart(); }
+      else { applyPhaseClass(seg.type === "rest" ? "rest" : null); Sound.startTune(); }
+    }
+    tick();
   }
 
   function pause() {
@@ -100,6 +127,8 @@ const Timer = (() => {
   function reset() {
     running = false;
     finished = false;
+    leadIn = false;
+    begun = false;
     cancelAnimationFrame(raf);
     segIndex = 0;
     elapsedBeforePause = 0;
@@ -127,6 +156,21 @@ const Timer = (() => {
 
   function tick() {
     const elapsed = currentElapsedMs() / 1000;
+
+    if (leadIn) {
+      const remaining = LEAD_IN - elapsed;
+      const remSec = Math.ceil(remaining);
+      if (remSec !== lastShownSec) {
+        if (remSec <= 3 && remSec >= 1) Sound.countdownTick();
+        lastShownSec = remSec;
+      }
+      if (remaining <= 0) { beginWorkout(); return; }
+      el.phaseLabel.textContent = "GET READY";
+      el.clockDisplay.textContent = String(Math.max(0, remSec));
+      el.roundLabel.textContent =
+        mode === "tabata" ? `${totalRounds} rounds` : mode === "amrap" ? "AMRAP" : "For Time";
+      return;
+    }
 
     if (countUp) {
       // For Time stopwatch
