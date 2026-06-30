@@ -1,12 +1,10 @@
-/* Synthesized sound engine using the Web Audio API.
-   No audio files required — all tones are generated on the fly. */
+/* Synthesized signal tones (Web Audio) + spoken cues (Web Speech).
+   Loud, square-wave signal beeps designed to be heard mid-workout. */
 const Sound = (() => {
   let ctx = null;
   let muted = false;
   let primed = false;
 
-  // Lazily create / resume the AudioContext. Must be triggered by a user
-  // gesture (e.g. pressing Start) or browsers will keep it suspended.
   function ensure() {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -17,27 +15,36 @@ const Sound = (() => {
     return ctx;
   }
 
-  // Play a single tone. t = offset in seconds from "now".
-  function tone(freq, start, dur, { type = "sine", gain = 0.25 } = {}) {
+  // One strong tone. t = offset (s) from now.
+  function tone(freq, start, dur, { type = "square", gain = 0.8 } = {}) {
     if (!ctx || muted) return;
-    const t0 = ctx.currentTime + start;
+    const t0 = ctx.currentTime + start + 0.005;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;
     osc.frequency.value = freq;
-    // quick attack + smooth release so beeps don't click
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);   // fast, punchy attack
+    g.gain.setValueAtTime(gain, t0 + dur * 0.75);            // hold full volume
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     osc.connect(g).connect(ctx.destination);
     osc.start(t0);
-    osc.stop(t0 + dur + 0.02);
+    osc.stop(t0 + dur + 0.03);
+  }
+
+  // Spoken cue. Falls back silently if speech synthesis is unavailable.
+  function say(text) {
+    if (muted || typeof speechSynthesis === "undefined") return;
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1; u.pitch = 1; u.volume = 1; u.lang = "en-US";
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
   }
 
   return {
-    // Call on a user gesture (Start press). Resumes the context and plays a
-    // 1-sample silent buffer to satisfy autoplay-unlock on iOS/Safari, so the
-    // first real beeps aren't dropped.
+    // Call on a user gesture (Start press): resume + prime audio and speech.
     unlock() {
       const c = ensure();
       if (c && !primed) {
@@ -45,50 +52,45 @@ const Sound = (() => {
         try {
           const buf = c.createBuffer(1, 1, 22050);
           const src = c.createBufferSource();
-          src.buffer = buf;
-          src.connect(c.destination);
-          src.start(0);
+          src.buffer = buf; src.connect(c.destination); src.start(0);
+        } catch (e) { /* ignore */ }
+        try {
+          if (typeof speechSynthesis !== "undefined") {
+            const u = new SpeechSynthesisUtterance(" ");
+            u.volume = 0; speechSynthesis.speak(u); // unlock speech on iOS/Safari
+          }
         } catch (e) { /* ignore */ }
       }
     },
-    toggleMute() { muted = !muted; return muted; },
+    toggleMute() {
+      muted = !muted;
+      if (muted && typeof speechSynthesis !== "undefined") { try { speechSynthesis.cancel(); } catch (e) {} }
+      return muted;
+    },
     isMuted() { return muted; },
 
-    // Short tick for the 3-2-1 countdown before a phase change.
-    countdownTick() { ensure(); tone(660, 0, 0.12, { type: "square", gain: 0.2 }); },
+    // Identical strong beep for each of 3-2-1.
+    countdown() { ensure(); tone(880, 0, 0.2, { gain: 0.85 }); },
 
-    // High double-beep when WORK begins.
-    workStart() {
+    // WORK begins: high, strong, rising + voice.
+    goWork() { ensure(); tone(1047, 0, 0.16, { gain: 0.9 }); tone(1568, 0.17, 0.55, { gain: 0.95 }); say("Work"); },
+
+    // REST begins: low, strong, sustained + voice.
+    goRest() { ensure(); tone(523, 0, 0.6, { gain: 0.9 }); say("Rest"); },
+
+    // AMRAP / For Time start.
+    goStart() { ensure(); tone(784, 0, 0.16, { gain: 0.9 }); tone(1175, 0.17, 0.5, { gain: 0.95 }); say("Go"); },
+
+    // Pause / resume blip.
+    pause() { ensure(); tone(440, 0, 0.12, { type: "sine", gain: 0.5 }); tone(330, 0.13, 0.22, { type: "sine", gain: 0.5 }); },
+
+    // Finished.
+    finish() {
       ensure();
-      tone(880, 0, 0.18, { type: "square", gain: 0.3 });
-      tone(1175, 0.18, 0.22, { type: "square", gain: 0.3 });
-    },
-
-    // Low single beep when REST begins.
-    restStart() { ensure(); tone(392, 0, 0.3, { type: "sine", gain: 0.3 }); },
-
-    // Rising 3-note tune when a workout/timer starts.
-    startTune() {
-      ensure();
-      tone(523, 0.0, 0.14, { type: "triangle" });
-      tone(659, 0.14, 0.14, { type: "triangle" });
-      tone(880, 0.28, 0.28, { type: "triangle", gain: 0.3 });
-    },
-
-    // Falling 2-note tune when paused.
-    pauseTune() {
-      ensure();
-      tone(587, 0.0, 0.16, { type: "triangle" });
-      tone(392, 0.16, 0.26, { type: "triangle" });
-    },
-
-    // Triumphant flourish when the whole workout is finished.
-    finishTune() {
-      ensure();
-      tone(523, 0.0, 0.14, { type: "square" });
-      tone(659, 0.14, 0.14, { type: "square" });
-      tone(784, 0.28, 0.14, { type: "square" });
-      tone(1047, 0.42, 0.4, { type: "square", gain: 0.32 });
+      tone(1047, 0.0, 0.16, { gain: 0.9 });
+      tone(880, 0.16, 0.16, { gain: 0.9 });
+      tone(659, 0.32, 0.6, { gain: 0.95 });
+      say("Done");
     },
   };
 })();

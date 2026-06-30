@@ -104,11 +104,11 @@ const Timer = (() => {
     phaseStart = now();
     lastShownSec = null;
     if (countUp) {
-      Sound.startTune();
+      Sound.goStart();
     } else {
       const seg = segments[0];
-      if (seg.type === "work") { applyPhaseClass("work"); Sound.workStart(); }
-      else { applyPhaseClass(seg.type === "rest" ? "rest" : null); Sound.startTune(); }
+      if (seg.type === "work") { applyPhaseClass("work"); Sound.goWork(); }
+      else { applyPhaseClass(seg.type === "rest" ? "rest" : null); Sound.goStart(); }
     }
     tick();
   }
@@ -118,7 +118,7 @@ const Timer = (() => {
     elapsedBeforePause = currentElapsedMs();
     running = false;
     cancelAnimationFrame(raf);
-    Sound.pauseTune();
+    Sound.pause();
     el.startPauseBtn.textContent = "Resume";
   }
 
@@ -161,7 +161,7 @@ const Timer = (() => {
       const remaining = LEAD_IN - elapsed;
       const remSec = Math.ceil(remaining);
       if (remSec !== lastShownSec) {
-        if (remSec <= 3 && remSec >= 1) Sound.countdownTick();
+        if (remSec <= 3 && remSec >= 1) Sound.countdown();
         lastShownSec = remSec;
       }
       if (remaining <= 0) { beginWorkout(); return; }
@@ -187,7 +187,7 @@ const Timer = (() => {
     // 3-2-1 countdown ticks before a phase ends
     const remSec = Math.ceil(remaining);
     if (remSec !== lastShownSec) {
-      if (remSec <= 3 && remSec >= 1) Sound.countdownTick();
+      if (remSec <= 3 && remSec >= 1) Sound.countdown();
       lastShownSec = remSec;
     }
 
@@ -217,8 +217,8 @@ const Timer = (() => {
       return;
     }
     const seg = segments[segIndex];
-    if (seg.type === "work") { applyPhaseClass("work"); Sound.workStart(); }
-    else if (seg.type === "rest") { applyPhaseClass("rest"); Sound.restStart(); }
+    if (seg.type === "work") { applyPhaseClass("work"); Sound.goWork(); }
+    else if (seg.type === "rest") { applyPhaseClass("rest"); Sound.goRest(); }
     tick();
   }
 
@@ -227,7 +227,7 @@ const Timer = (() => {
     finished = true;
     cancelAnimationFrame(raf);
     applyPhaseClass("done");
-    Sound.finishTune();
+    Sound.finish();
     el.phaseLabel.textContent = capped ? "TIME CAPPED" : "DONE";
     el.startPauseBtn.textContent = "Start";
     el.roundLabel.textContent = "Nice work! 🔥";
