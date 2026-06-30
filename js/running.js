@@ -117,13 +117,15 @@ const Running = (() => {
     if (max) return { hrMax: max, basis: `from your highest recorded HR (${max} bpm)` };
     return { hrMax: 190, basis: "default estimate — set Max HR in ⚙ Settings" };
   }
-  function deriveThresholdPace(runs, anchorInfo) {
+  function deriveThresholdPace(model) {
     const o = Settings.thrPaceOverride();
     if (o) return { pace: o, basis: "from your profile" };
-    if (anchorInfo && anchorInfo.anchor) {
-      const a = anchorInfo.anchor;
-      const pace = Zones.riegel(a.km, a.sec, 10) / 10; // ~10k pace as LT proxy
-      return { pace, basis: `≈ your 10k pace, from your best ${a.label} effort` };
+    if (model && model.cs) {
+      return { pace: model.cs.criticalPace, basis: "your critical speed (CS model)" };
+    }
+    if (model && model.predictions) {
+      const tenk = model.predictions.find((p) => p.label === "10 km");
+      if (tenk) return { pace: tenk.pace, basis: "≈ your predicted 10k pace" };
     }
     return null;
   }
@@ -166,7 +168,7 @@ const Running = (() => {
         `<tr><td><b>${z.z}</b></td><td>${z.name}</td><td>${z.lo}–${z.hi}</td></tr>`).join("");
 
     const bests = Zones.bestEfforts(runs);
-    const thr = deriveThresholdPace(runs, Zones.pickAnchor(bests, hrMax));
+    const thr = deriveThresholdPace(Zones.predictRaces(bests, hrMax));
     if (!thr) {
       el.paceBasis.textContent = "Log a run (or set a threshold pace in ⚙ Settings) to see pace zones.";
       el.paceZoneTable.innerHTML = "";
@@ -194,22 +196,24 @@ const Running = (() => {
           `<td>${b.hr || "—"}</td><td>${Zones.effortLabel(frac)}</td></tr>`;
       }).join("");
 
-    // Predictions anchored on the best hard effort.
-    const picked = Zones.pickAnchor(bests, hrMax);
-    if (!picked) {
+    // Predictions: HR-adjusted Critical Speed model (Riegel fallback).
+    const model = Zones.predictRaces(bests, hrMax);
+    if (!model) {
       el.predBasis.textContent = "Log a run with distance and time (splits help) to see race predictions.";
       el.predTable.innerHTML = "";
       return;
     }
-    const a = picked.anchor;
-    const effort = Zones.effortLabel(picked.frac);
-    el.predBasis.innerHTML =
-      `Anchored on your fastest <b>${a.label}</b>: ${Zones.fmtTime(a.sec)} (${Zones.fmtPace(a.pace)})` +
-      `${a.hr ? ` at ${a.hr} bpm · ${effort} effort` : ""}.` +
-      (picked.hard ? "" : " ⚠ No clearly hard effort found yet — these are likely conservative. Log an all-out or race effort for a sharper estimate.");
+    let basis = `Model: <b>${escape(model.method)}</b>. `;
+    if (model.cs) {
+      basis += `Critical speed ${Zones.fmtPace(model.cs.criticalPace)} (sustainable pace), anaerobic reserve D′ ≈ ${Math.round(model.cs.Dp)} m.`;
+    } else {
+      basis += `Single-distance estimate — log efforts at more distances (e.g. a fast 1k and a longer tempo) for the Critical Speed model.`;
+    }
+    if (model.corrected) basis += ` Paces are HR-adjusted up to estimated max-effort.`;
+    el.predBasis.innerHTML = basis;
     el.predTable.innerHTML =
       `<tr><th>Distance</th><th>Time</th><th>Pace</th></tr>` +
-      Zones.predictions(a.km, a.sec).map((p) =>
+      model.predictions.map((p) =>
         `<tr><td>${p.label}</td><td><b>${Zones.fmtTime(p.sec)}</b></td><td>${Zones.fmtPace(p.pace)}</td></tr>`).join("");
   }
 
