@@ -151,6 +151,89 @@ const Zones = (() => {
     }));
   }
 
+  // ---- HR effort correction ----
+  // Expected %HRmax for an ALL-OUT race effort of the given duration (seconds).
+  // Anchored on observed race intensities: ~5k 97%, 10k 94%, HM 93%, M 87%.
+  function expectedMaxHRpct(t) {
+    const pts = [[60, 1.00], [90, 0.995], [1500, 0.97], [2700, 0.94], [5400, 0.93], [12600, 0.87], [20000, 0.85]];
+    const lt = Math.log(Math.max(30, t));
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [t1, h1] = pts[i], [t2, h2] = pts[i + 1];
+      if (lt <= Math.log(t2) || i === pts.length - 2) {
+        const a = Math.max(0, Math.min(1, (lt - Math.log(t1)) / (Math.log(t2) - Math.log(t1))));
+        return h1 + (h2 - h1) * a;
+      }
+    }
+    return 0.85;
+  }
+  // Scale a sub-maximal effort to its estimated max-effort time. velocity ∝
+  // %VO2max (Swain), so corrected time = time · (%VO2_now / %VO2_max).
+  function effortCorrect(sec, avgHr, hrMax) {
+    if (!avgHr || !hrMax) return { sec, corrected: false };
+    const pctNow = avgHr / hrMax;
+    const pctMax = expectedMaxHRpct(sec);
+    if (pctNow >= pctMax) return { sec, corrected: false }; // already ~maximal
+    const vo2Now = (pctNow - 0.37) / 0.64;
+    const vo2Max = (pctMax - 0.37) / 0.64;
+    if (vo2Now <= 0 || vo2Max <= 0) return { sec, corrected: false };
+    let factor = Math.max(0.85, vo2Now / vo2Max); // cap upscaling at ~+18% speed
+    return { sec: sec * factor, corrected: true };
+  }
+
+  // ---- Critical Speed (2-parameter) ----
+  // Fit distance = CS·time + D' over efforts at distinct distances.
+  function fitCS(points) {
+    const byDist = new Map();
+    points.forEach((p) => { const k = Math.round(p.d); if (!byDist.has(k) || p.t < byDist.get(k).t) byDist.set(k, p); });
+    const pts = [...byDist.values()];
+    if (pts.length < 2) return null;
+    const span = Math.max(...pts.map((p) => p.d)) / Math.min(...pts.map((p) => p.d));
+    if (span < 1.8) return null; // need a meaningful distance range
+    const n = pts.length;
+    let st = 0, sd = 0, stt = 0, std = 0;
+    pts.forEach((p) => { st += p.t; sd += p.d; stt += p.t * p.t; std += p.t * p.d; });
+    const denom = n * stt - st * st;
+    if (Math.abs(denom) < 1e-6) return null;
+    const CS = (n * std - st * sd) / denom;     // m/s
+    let Dp = (sd - CS * st) / n;                // m
+    if (CS <= 0 || Dp < -50 || Dp > 600) return null;
+    Dp = Math.max(0, Dp);
+    return { CS, Dp, criticalPace: 1000 / CS }; // pace = sec/km
+  }
+  function predictCS(cs, distM) { return (distM - cs.Dp) / cs.CS; }
+
+  // Full race-prediction pipeline: HR-correct efforts → Critical Speed (with
+  // Riegel extrapolation beyond 10k) → fallback to Riegel from the best effort.
+  function predictRaces(bests, hrMax) {
+    if (!bests.length) return null;
+    const pts = bests.map((b) => {
+      const c = effortCorrect(b.sec, b.hr, hrMax);
+      return { km: b.km, d: b.km * 1000, t: c.sec, corrected: c.corrected, label: b.label };
+    });
+    const corrected = pts.some((p) => p.corrected);
+    const cs = fitCS(pts);
+    let predictions, method;
+
+    if (cs) {
+      const cs10k = predictCS(cs, 10000) / 10; // 10k pace, for long-race Riegel
+      predictions = TARGETS.map((r) => {
+        const sec = r.km <= 12 ? predictCS(cs, r.km * 1000) : riegel(10, predictCS(cs, 10000), r.km);
+        return { label: r.label, sec, pace: sec / r.km };
+      });
+      // sanity: times must increase with distance
+      const ok = predictions.every((p, i) => i === 0 || p.sec > predictions[i - 1].sec) && predictions[0].sec > 0;
+      if (ok) {
+        method = "Critical Speed" + (corrected ? " · HR-adjusted" : "");
+        return { method, cs, corrected, predictions };
+      }
+    }
+    // fallback: Riegel from the longest corrected effort
+    pts.sort((a, b) => b.km - a.km);
+    const a = pts[0];
+    predictions = TARGETS.map((r) => { const sec = riegel(a.km, a.t, r.km); return { label: r.label, sec, pace: sec / r.km }; });
+    return { method: "Riegel" + (corrected ? " · HR-adjusted" : ""), cs: null, corrected, predictions, anchorKm: a.km };
+  }
+
   // ---- Riegel predictions ----
   function riegel(d1, t1, d2) { return t1 * Math.pow(d2 / d1, RIEGEL); }
   const TARGETS = [
@@ -168,7 +251,7 @@ const Zones = (() => {
   return {
     fmtTime, fmtPace, parseTime,
     effortLabel, HARD_FRAC,
-    bestEfforts, pickAnchor,
+    bestEfforts, pickAnchor, predictRaces,
     hrZones, paceZones, predictions, riegel, TARGETS,
   };
 })();
