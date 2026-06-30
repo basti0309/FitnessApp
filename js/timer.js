@@ -24,7 +24,8 @@ const Timer = (() => {
   const LEAD_IN = 10;         // seconds of pre-start countdown (all modes)
   let leadIn = false;         // currently in the GET READY countdown
   let begun = false;          // the actual workout has started (past lead-in)
-  let totalRounds = 0;        // tabata rounds, for the lead-in label
+  let totalRounds = 0;        // rounds per set, for the lead-in label
+  let totalSets = 1;          // number of sets, for the lead-in label
 
   let summary = null;     // result handed to the Log tab
 
@@ -53,12 +54,27 @@ const Timer = (() => {
       const rounds = clampInt(el.tabRounds.value, 1, 99, 8);
       const work = clampInt(el.tabWork.value, 1, 600, 20);
       const rest = clampInt(el.tabRest.value, 0, 600, 10);
-      totalRounds = rounds;
-      for (let r = 1; r <= rounds; r++) {
-        segments.push({ type: "work", dur: work, round: r, total: rounds });
-        if (rest > 0 && r < rounds) {
-          segments.push({ type: "rest", dur: rest, round: r, total: rounds });
+      const sets = clampInt(el.tabSets.value, 1, 20, 1);
+      const setRest = clampInt(el.tabSetRest.value, 0, 900, 60);
+      totalRounds = rounds; totalSets = sets;
+      for (let s = 1; s <= sets; s++) {
+        for (let r = 1; r <= rounds; r++) {
+          segments.push({ type: "work", dur: work, round: r, total: rounds, set: s, sets });
+          if (rest > 0 && r < rounds) segments.push({ type: "rest", dur: rest, round: r, total: rounds, set: s, sets });
         }
+        if (s < sets && setRest > 0) segments.push({ type: "setrest", dur: setRest, set: s, sets });
+      }
+    } else if (mode === "emom") {
+      const rounds = clampInt(el.emomRounds.value, 1, 99, 10);
+      const interval = clampInt(el.emomInterval.value, 5, 600, 60);
+      const sets = clampInt(el.emomSets.value, 1, 20, 1);
+      const setRest = clampInt(el.emomSetRest.value, 0, 900, 60);
+      totalRounds = rounds; totalSets = sets;
+      for (let s = 1; s <= sets; s++) {
+        for (let r = 1; r <= rounds; r++) {
+          segments.push({ type: "emom", dur: interval, round: r, total: rounds, set: s, sets });
+        }
+        if (s < sets && setRest > 0) segments.push({ type: "setrest", dur: setRest, set: s, sets });
       }
     } else if (mode === "amrap") {
       const total = clampInt(el.amrapMin.value, 0, 180, 12) * 60 + clampInt(el.amrapSec.value, 0, 59, 0);
@@ -108,6 +124,7 @@ const Timer = (() => {
     } else {
       const seg = segments[0];
       if (seg.type === "work") { applyPhaseClass("work"); Sound.goWork(); }
+      else if (seg.type === "emom") { applyPhaseClass("work"); Sound.goEmom(seg.round); }
       else { applyPhaseClass(seg.type === "rest" ? "rest" : null); Sound.goStart(); }
     }
     tick();
@@ -168,7 +185,9 @@ const Timer = (() => {
       el.phaseLabel.textContent = "GET READY";
       el.clockDisplay.textContent = String(Math.max(0, remSec));
       el.roundLabel.textContent =
-        mode === "tabata" ? `${totalRounds} rounds` : mode === "amrap" ? "AMRAP" : "For Time";
+        (mode === "tabata" || mode === "emom")
+          ? `${totalRounds} round${totalRounds > 1 ? "s" : ""}${totalSets > 1 ? ` × ${totalSets} sets` : ""}`
+          : mode === "amrap" ? "AMRAP" : "For Time";
       return;
     }
 
@@ -200,9 +219,13 @@ const Timer = (() => {
     if (seg.type === "amrap") {
       el.phaseLabel.textContent = "AMRAP";
       el.roundLabel.textContent = "As many rounds as possible";
+    } else if (seg.type === "setrest") {
+      el.phaseLabel.textContent = "SET REST";
+      el.roundLabel.textContent = `Set ${seg.set} done · next ${seg.set + 1} / ${seg.sets}`;
     } else {
-      el.phaseLabel.textContent = seg.type === "work" ? "WORK" : "REST";
-      el.roundLabel.textContent = `Round ${seg.round} / ${seg.total}`;
+      el.phaseLabel.textContent = seg.type === "work" ? "WORK" : seg.type === "rest" ? "REST" : "EMOM";
+      const setPart = seg.sets > 1 ? ` · Set ${seg.set} / ${seg.sets}` : "";
+      el.roundLabel.textContent = `Round ${seg.round} / ${seg.total}${setPart}`;
     }
   }
 
@@ -219,6 +242,8 @@ const Timer = (() => {
     const seg = segments[segIndex];
     if (seg.type === "work") { applyPhaseClass("work"); Sound.goWork(); }
     else if (seg.type === "rest") { applyPhaseClass("rest"); Sound.goRest(); }
+    else if (seg.type === "emom") { applyPhaseClass("work"); Sound.goEmom(seg.round); }
+    else if (seg.type === "setrest") { applyPhaseClass("rest"); Sound.goSetRest(); }
     tick();
   }
 
@@ -240,6 +265,12 @@ const Timer = (() => {
         workSec: clampInt(el.tabWork.value, 1, 600, 20),
         restSec: clampInt(el.tabRest.value, 0, 600, 10),
       };
+      el.clockDisplay.textContent = "DONE";
+    } else if (mode === "emom") {
+      const interval = clampInt(el.emomInterval.value, 5, 600, 60);
+      const rounds = clampInt(el.emomRounds.value, 1, 99, 10);
+      const sets = clampInt(el.emomSets.value, 1, 20, 1);
+      summary = { type: "amrap", durationSec: interval * rounds * sets };
       el.clockDisplay.textContent = "DONE";
     } else if (mode === "amrap") {
       summary = { type: "amrap", durationSec: segments[0].dur };
@@ -263,6 +294,12 @@ const Timer = (() => {
       tabRounds: document.getElementById("tabRounds"),
       tabWork: document.getElementById("tabWork"),
       tabRest: document.getElementById("tabRest"),
+      tabSets: document.getElementById("tabSets"),
+      tabSetRest: document.getElementById("tabSetRest"),
+      emomRounds: document.getElementById("emomRounds"),
+      emomInterval: document.getElementById("emomInterval"),
+      emomSets: document.getElementById("emomSets"),
+      emomSetRest: document.getElementById("emomSetRest"),
       amrapMin: document.getElementById("amrapMin"),
       amrapSec: document.getElementById("amrapSec"),
       capMin: document.getElementById("capMin"),
@@ -289,6 +326,7 @@ const Timer = (() => {
         document.querySelectorAll("#timerModes .seg-btn").forEach((x) => x.classList.remove("is-active"));
         b.classList.add("is-active");
         document.getElementById("setTabata").classList.toggle("hidden", b.dataset.mode !== "tabata");
+        document.getElementById("setEmom").classList.toggle("hidden", b.dataset.mode !== "emom");
         document.getElementById("setAmrap").classList.toggle("hidden", b.dataset.mode !== "amrap");
         document.getElementById("setFortime").classList.toggle("hidden", b.dataset.mode !== "fortime");
         setMode(b.dataset.mode);

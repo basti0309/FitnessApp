@@ -78,6 +78,12 @@ const Sound = (() => {
     // REST begins: low, strong, sustained + voice.
     goRest() { ensure(); tone(523, 0, 0.6, { gain: 0.9 }); say("Rest"); },
 
+    // SET REST begins: distinct low double tone + voice.
+    goSetRest() { ensure(); tone(440, 0, 0.25, { gain: 0.9 }); tone(330, 0.27, 0.55, { gain: 0.9 }); say("Set rest"); },
+
+    // EMOM minute begins: strong tone + spoken round number.
+    goEmom(n) { ensure(); tone(1047, 0, 0.16, { gain: 0.9 }); tone(1568, 0.17, 0.45, { gain: 0.95 }); say(String(n || "")); },
+
     // AMRAP / For Time start.
     goStart() { ensure(); tone(784, 0, 0.16, { gain: 0.9 }); tone(1175, 0.17, 0.5, { gain: 0.95 }); say("Go"); },
 
