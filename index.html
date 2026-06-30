@@ -155,8 +155,8 @@
         <div class="card">
           <h2>Add a run</h2>
           <label class="filelabel">
-            <input type="file" id="runShots" accept="image/*" multiple hidden>
-            <span>📷 Upload screenshot(s) — intervals, heart rate, summary</span>
+            <input type="file" id="runShots" accept="image/*,video/*" multiple hidden>
+            <span>📷 Upload screenshots or a 🎬 screen recording — intervals, heart rate, summary</span>
           </label>
           <div id="shotPreview" class="shot-preview"></div>
           <button class="btn btn-primary" id="extractBtn" disabled>Read with AI ✨</button>
@@ -262,6 +262,7 @@
   <script src="js/storage.js"></script>
   <script src="js/zones.js"></script>
   <script src="js/ai.js"></script>
+  <script src="js/video.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/timer.js"></script>
   <script src="js/log.js"></script>
