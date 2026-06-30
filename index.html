@@ -27,6 +27,7 @@
     <section id="tab-timer" class="panel is-active">
       <div class="seg" id="timerModes">
         <button class="seg-btn is-active" data-mode="tabata">Tabata</button>
+        <button class="seg-btn" data-mode="emom">EMOM</button>
         <button class="seg-btn" data-mode="amrap">AMRAP</button>
         <button class="seg-btn" data-mode="fortime">For Time</button>
       </div>
@@ -36,6 +37,14 @@
         <label>Rounds<input type="number" id="tabRounds" value="8" min="1" max="99"></label>
         <label>Work (s)<input type="number" id="tabWork" value="20" min="1" max="600"></label>
         <label>Rest (s)<input type="number" id="tabRest" value="10" min="0" max="600"></label>
+        <label>Sets<input type="number" id="tabSets" value="1" min="1" max="20"></label>
+        <label>Set rest (s)<input type="number" id="tabSetRest" value="60" min="0" max="900"></label>
+      </div>
+      <div class="settings hidden" id="setEmom">
+        <label>Rounds<input type="number" id="emomRounds" value="10" min="1" max="99"></label>
+        <label>Interval (s)<input type="number" id="emomInterval" value="60" min="5" max="600"></label>
+        <label>Sets<input type="number" id="emomSets" value="1" min="1" max="20"></label>
+        <label>Set rest (s)<input type="number" id="emomSetRest" value="60" min="0" max="900"></label>
       </div>
       <div class="settings hidden" id="setAmrap">
         <label>Minutes<input type="number" id="amrapMin" value="12" min="1" max="180"></label>

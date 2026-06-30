@@ -61,7 +61,8 @@ body {
 .seg-btn.is-active { background: var(--bg-card); color: var(--txt); box-shadow: var(--shadow); }
 
 /* ---------- settings ---------- */
-.settings { display: flex; gap: 10px; margin-bottom: 16px; }
+.settings { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.settings label { min-width: 84px; }
 .settings label, .form label {
   display: flex; flex-direction: column; gap: 6px; flex: 1;
   font-size: .8rem; color: var(--muted); font-weight: 600;
