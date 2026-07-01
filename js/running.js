@@ -106,15 +106,26 @@ const Running = (() => {
   }
   function importGpxText(text, source) {
     if (!text || !text.includes("<gpx")) {
-      el.gpxStatus.textContent = `⚠ The ${source} doesn't contain GPX data.`;
+      el.gpxStatus.textContent = `⚠ The ${source} doesn't contain GPX data — copying a file often puts the file (not text) on the clipboard; the file picker always works.`;
       return;
     }
     const out = importGpxRuns([{ name: source, text }]);
     el.gpxStatus.textContent = (out.added ? "✓ " : "") + gpxSummary(out);
   }
+  // copied FILES land on the clipboard as files, not text — handle both
   async function pasteGpx() {
     try {
-      const text = await navigator.clipboard.readText();
+      let text = "";
+      if (navigator.clipboard.read) {
+        try {
+          for (const item of await navigator.clipboard.read()) {
+            const type = item.types.find((t) => t === "text/plain" || t.includes("gpx") || t.includes("xml"));
+            if (type) { text = await (await item.getType(type)).text(); }
+            if (text.includes("<gpx")) break;
+          }
+        } catch { /* fall through to readText */ }
+      }
+      if (!text && navigator.clipboard.readText) text = await navigator.clipboard.readText();
       importGpxText(text, "clipboard");
     } catch {
       el.gpxStatus.textContent = "⚠ Couldn't read the clipboard — allow paste access, press ⌘V instead, or use the file picker.";
@@ -153,6 +164,9 @@ const Running = (() => {
     el.emptyRuns.style.display = list.length ? "none" : "block";
     el.runList.innerHTML = list.map((r) => {
       const pace = r.distanceKm && r.durationSec ? Zones.fmtPace(r.durationSec / r.distanceKm) : "—";
+      const gap = r.distanceKm && r.gapDurationSec && r.elevGainM > 3
+        ? ` · GAP ${Zones.fmtPace(r.gapDurationSec / r.distanceKm)}` : "";
+      const elev = r.elevGainM != null ? ` · ↑${r.elevGainM} m` : "";
       return `
         <li class="wod-item">
           <div class="wod-main">
@@ -160,7 +174,7 @@ const Running = (() => {
               <span class="badge run">RUN</span>
               <span class="wod-name">${escape(r.title || "Run")}</span>
             </div>
-            <div class="wod-ex">${r.distanceKm ?? "—"} km · ${Zones.fmtTime(r.durationSec)} · ${pace}${r.avgHr ? " · " + r.avgHr + " bpm" : ""}</div>
+            <div class="wod-ex">${r.distanceKm ?? "—"} km · ${Zones.fmtTime(r.durationSec)} · ${pace}${gap}${elev}${r.avgHr ? " · " + r.avgHr + " bpm" : ""}</div>
             ${r.intervals?.length ? `<div class="wod-meta">${r.intervals.length} intervals</div>` : ""}
             <div class="wod-meta">${fmtDate(r.date)}</div>
             ${r.notes ? `<div class="wod-notes">${escape(r.notes)}</div>` : ""}
@@ -315,10 +329,14 @@ const Running = (() => {
       finally { el.gpxDriveBtn.disabled = false; }
     });
     el.gpxPasteBtn.addEventListener("click", pasteGpx);
-    // ⌘V / Ctrl+V anywhere on the Run tab imports GPX from the clipboard
+    // ⌘V / Ctrl+V anywhere on the Run tab imports GPX from the clipboard —
+    // as pasted text OR as a pasted/copied .gpx file
     document.addEventListener("paste", (e) => {
       if (!document.getElementById("tab-run").classList.contains("is-active")) return;
       if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "")) return;
+      const files = [...(e.clipboardData?.files || [])]
+        .filter((f) => /\.gpx$/i.test(f.name) || (f.type || "").includes("gpx") || (f.type || "").includes("xml"));
+      if (files.length) { e.preventDefault(); onGpxFiles(files); return; }
       const text = e.clipboardData?.getData("text") || "";
       if (text.includes("<gpx")) { e.preventDefault(); importGpxText(text, "clipboard"); }
     });

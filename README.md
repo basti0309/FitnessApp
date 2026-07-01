@@ -30,9 +30,18 @@ optionally synced across devices via your own Google Drive.
   from Files / iCloud Drive — **paste GPX from the clipboard** (button or
   simply ⌘V on the Run tab), or drop them into a Google Drive folder and let
   the app pull them: on tap ("Import new GPX from Google Drive") and
-  automatically once a day when the app opens. The parser computes distance,
-  moving time, avg/max heart rate, and clean **1-km splits with per-split HR**
-  from the track points. Duplicates are detected via the GPX start time (which
+  automatically once a day when the app opens. Pasting works with GPX *text*
+  and with copied GPX *files*. The parser computes distance, moving time,
+  avg/max heart rate, elevation gain/loss, and clean **1-km splits with
+  per-split HR** from the track points.
+- **Grade-adjusted pace (GAP):** every GPX run gets a flat-equivalent pace
+  from the **Minetti et al. (2002)** energy-cost-of-running model (the
+  science standard behind Strava's GAP): each leg's time is scaled by
+  C(0)/C(grade). Elevation is smoothed and hysteresis-filtered (≥3 m) with
+  the grade taken over a ~50 m window, so barometer jitter can't fake
+  slopes — a flat run gets GAP ≈ pace, real hills the full correction.
+  **Best efforts and race predictions use the grade-adjusted times**, so
+  hilly runs don't hide fitness. Duplicates are detected via the GPX start time (which
   syncs with your data), so re-selecting or re-syncing everything is always
   safe. iCloud Drive has no web API, so the folder automation is
   Google-Drive-only; the Files picker covers the iCloud path.
@@ -98,6 +107,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-01 | **Grade-adjusted pace** (Minetti 2002) feeding best efforts & predictions; elevation gain/loss with noise filtering; clipboard paste fixed for copied GPX *files* |
 | 2026-07-01 | **Timeframe picker** (3 mo/6 mo/1 yr/all) for the prediction trend and the prediction model; **paste GPX from clipboard** (button + ⌘V); screenshot/AI upload removed (GPX replaced it) |
 | 2026-07-01 | **GPX import**: file picker (iPhone Files/iCloud) + Google Drive folder pull with daily auto-check; parser with 1-km splits & HR; duplicate detection via GPX start time |
 | 2026-07-01 | **Progress analytics**: prediction-trend chart, weekly distance, time-in-zones, PR table with NEW badges, 4-week stat tiles; SVG chart engine with tooltips + table view; screen-recording import removed |
