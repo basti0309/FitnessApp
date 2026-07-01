@@ -26,6 +26,15 @@ optionally synced across devices via your own Google Drive.
 - History with type badges, structure labels, results, and notes.
 
 ### Running
+- **GPX import (Zepp & co.):** pick exported `.gpx` files — on iPhone straight
+  from Files / iCloud Drive — or drop them into a Google Drive folder and let
+  the app pull them: on tap ("Import new GPX from Google Drive") and
+  automatically once a day when the app opens. The parser computes distance,
+  moving time, avg/max heart rate, and clean **1-km splits with per-split HR**
+  from the track points. Duplicates are detected via the GPX start time (which
+  syncs with your data), so re-selecting or re-syncing everything is always
+  safe. iCloud Drive has no web API, so the folder automation is
+  Google-Drive-only; the Files picker covers the iCloud path.
 - **Log a run from screenshots:** upload watch/app screenshots and Claude
   (your own Anthropic API key, stored on-device) extracts date, distance,
   time, heart rate, and **every split** into the form.
@@ -73,6 +82,7 @@ optionally synced across devices via your own Google Drive.
 | `js/audio.js` | Web Audio tones + speech cues |
 | `js/storage.js` | `localStorage` persistence for WODs |
 | `js/zones.js` | Running math: best efforts, zones, Critical Speed model |
+| `js/gpx.js` | GPX parser: distance, moving time, HR, auto 1-km splits |
 | `js/ai.js` | Claude vision call for screenshot extraction |
 | `js/settings.js` | Device-only settings (API key, HR/pace overrides) |
 | `js/charts.js` | Dependency-free SVG charts (line, bars, stacked bar) |
@@ -87,6 +97,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-01 | **GPX import**: file picker (iPhone Files/iCloud) + Google Drive folder pull with daily auto-check; parser with 1-km splits & HR; duplicate detection via GPX start time |
 | 2026-07-01 | **Progress analytics**: prediction-trend chart, weekly distance, time-in-zones, PR table with NEW badges, 4-week stat tiles; SVG chart engine with tooltips + table view; screen-recording import removed |
 | 2026-06-30 | EMOM mode, Sets + set-rest for Tabata/EMOM, Safari alignment pass |
 | 2026-06-30 | Loud signal tones + voice cues, 10 s pre-start countdown, 3-2-1 beeps |

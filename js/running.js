@@ -66,6 +66,45 @@ const Running = (() => {
     }).filter((iv) => iv.distanceKm || iv.durationSec || iv.label);
   }
 
+  // ---------- GPX import ----------
+  // items: [{ name, text }] — parse, skip anything already imported, save.
+  function importGpxRuns(items) {
+    const existing = RunStore.all();
+    const isDupe = (run) => existing.some((r) =>
+      (r.gpxKey && r.gpxKey === run.gpxKey) ||
+      (r.date === run.date &&
+        Math.abs((r.distanceKm || 0) - run.distanceKm) < 0.15 &&
+        Math.abs((r.durationSec || 0) - run.durationSec) < 10));
+    const out = { added: 0, skipped: 0, failed: [] };
+    for (const it of items) {
+      try {
+        const run = GPX.parse(it.text);
+        if (isDupe(run)) { out.skipped++; continue; }
+        RunStore.add(run);
+        existing.push(run);
+        out.added++;
+      } catch (err) {
+        out.failed.push(`${it.name}: ${err.message}`);
+      }
+    }
+    if (out.added) refresh();
+    return out;
+  }
+  function gpxSummary(out) {
+    const bits = [`${out.added} imported`];
+    if (out.skipped) bits.push(`${out.skipped} already there`);
+    if (out.failed.length) bits.push(`${out.failed.length} failed (${out.failed[0]})`);
+    return bits.join(" · ");
+  }
+  async function onGpxFiles(files) {
+    const items = [];
+    for (const f of [...files]) items.push({ name: f.name, text: await f.text() });
+    if (!items.length) return;
+    el.gpxStatus.textContent = "Importing…";
+    const out = importGpxRuns(items);
+    el.gpxStatus.textContent = (out.added ? "✓ " : "") + gpxSummary(out);
+  }
+
   // ---------- screenshots ----------
   async function onFiles(files) {
     pendingBlocks = [];
@@ -278,6 +317,15 @@ const Running = (() => {
 
     el.shots.addEventListener("change", (e) => onFiles(e.target.files));
     el.extractBtn.addEventListener("click", extract);
+    el.gpxFiles = document.getElementById("gpxFiles");
+    el.gpxStatus = document.getElementById("gpxStatus");
+    el.gpxDriveBtn = document.getElementById("gpxDriveBtn");
+    el.gpxFiles.addEventListener("change", (e) => { onGpxFiles(e.target.files); e.target.value = ""; });
+    el.gpxDriveBtn.addEventListener("click", async () => {
+      el.gpxDriveBtn.disabled = true;
+      try { await Drive.importGpx(true, (t) => { el.gpxStatus.textContent = t; }); }
+      finally { el.gpxDriveBtn.disabled = false; }
+    });
     el.addIv.addEventListener("click", () => addIvRow());
 
     document.querySelectorAll("#runModes .seg-btn").forEach((b) =>
@@ -312,5 +360,5 @@ const Running = (() => {
     refresh();
   }
 
-  return { init, refresh };
+  return { init, refresh, importGpxRuns, gpxSummary };
 })();

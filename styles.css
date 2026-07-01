@@ -242,6 +242,15 @@ code { background: var(--bg-elev); padding: 1px 5px; border-radius: 4px; font-si
 .stack-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stack-val { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+/* ---------- GPX import ---------- */
+.gpx-card .filelabel { margin: 4px 0 10px; }
+.gpx-drive-btn { width: 100%; }
+.check-row {
+  flex-direction: row !important; align-items: center; gap: 9px !important;
+  font-size: .85rem !important;
+}
+.check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+
 /* PR badge */
 .pr-badge {
   display: inline-block; margin-left: 8px; padding: 2px 7px; border-radius: 999px;
