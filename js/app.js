@@ -15,6 +15,7 @@ const App = (() => {
     Log.init();
     Settings.init();
     Running.init();
+    Progress.init();
     Drive.init();
 
     // when a remote Drive pull replaces local data, refresh the views

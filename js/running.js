@@ -72,19 +72,7 @@ const Running = (() => {
     el.shotPreview.innerHTML = "";
     el.extractBtn.disabled = true;
     for (const f of [...files]) {
-      if (f.type.startsWith("video/")) {
-        try {
-          const frames = await VideoFrames.extract(f, {
-            onProgress: (p) => { el.aiNote.textContent = `Extracting frames from video… ${Math.round(p * 100)}%`; },
-          });
-          pendingBlocks.push(...frames);
-          el.aiNote.textContent = `Got ${frames.length} frames from the video — tap “Read with AI”.`;
-        } catch (err) {
-          el.aiNote.textContent = "⚠ " + err.message;
-        }
-      } else if (f.type.startsWith("image/")) {
-        pendingBlocks.push(await AI.fileToBlock(f));
-      }
+      if (f.type.startsWith("image/")) pendingBlocks.push(await AI.fileToBlock(f));
     }
     pendingBlocks.forEach((b) => {
       const img = document.createElement("img");
@@ -244,8 +232,10 @@ const Running = (() => {
     document.querySelectorAll("#runModes .seg-btn").forEach((b) =>
       b.classList.toggle("is-active", b.dataset.rmode === mode));
     el.add.classList.toggle("hidden", mode !== "add");
+    el.progress.classList.toggle("hidden", mode !== "progress");
     el.zones.classList.toggle("hidden", mode !== "zones");
     el.predict.classList.toggle("hidden", mode !== "predict");
+    if (mode === "progress") Progress.render();
     if (mode === "zones") renderZones();
     if (mode === "predict") renderPredictions();
   }
@@ -271,6 +261,7 @@ const Running = (() => {
       runCount: document.getElementById("runCount"),
       emptyRuns: document.getElementById("emptyRuns"),
       add: document.getElementById("runAdd"),
+      progress: document.getElementById("runProgress"),
       zones: document.getElementById("runZones"),
       predict: document.getElementById("runPredict"),
       hrBasis: document.getElementById("hrBasis"),
