@@ -8,8 +8,13 @@
    Conflict policy: last-write-wins by document timestamp (single-user app). */
 const Drive = (() => {
   const SCOPE = "https://www.googleapis.com/auth/drive.file";
+  // reading GPX exports the user drops into a Drive folder needs read access
+  // beyond app-created files; requested only when the GPX import is used
+  const GPX_SCOPE = SCOPE + " https://www.googleapis.com/auth/drive.readonly";
   const FLAG = "wodbox.driveConnected";
   const TS = "wodbox.updatedAt";
+  const GPX_SEEN = "wodbox.gpxFiles.v1";      // Drive file ids already fetched (per device)
+  const GPX_LAST = "wodbox.gpxLastCheck";     // last automatic folder check
 
   let tokenClient = null;
   let accessToken = null;
@@ -59,12 +64,12 @@ const Drive = (() => {
       },
     });
   }
-  function getToken(interactive) {
+  function getToken(interactive, scope) {
     return new Promise((resolve, reject) => {
       if (!gisReady()) return reject(new Error("Google sign-in didn't load (check network / blockers)."));
       ensureClient();
       pending = { resolve, reject };
-      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
+      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none", scope: scope || SCOPE }); }
       catch (e) { pending = null; reject(e); }
     });
   }
@@ -112,6 +117,62 @@ const Drive = (() => {
     }
   }
 
+  // ---------- GPX folder import ----------
+  function seenIds() { try { return JSON.parse(localStorage.getItem(GPX_SEEN)) || []; } catch { return []; } }
+
+  async function importGpx(interactive = true, onStatus = () => {}) {
+    const folder = (Settings.get("gpxFolder") || "").trim() || "Zepp";
+    try {
+      onStatus("Checking Google Drive…");
+      await getToken(interactive, GPX_SCOPE);
+
+      const fq = encodeURIComponent(
+        `name='${folder.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      const fRes = await (await api(`https://www.googleapis.com/drive/v3/files?q=${fq}&fields=files(id,name)`)).json();
+      const dir = fRes.files && fRes.files[0];
+      if (!dir) { onStatus(`⚠ No folder named “${folder}” in your Drive. Create it (or change the name in ⚙ Settings) and drop your GPX exports there.`); return null; }
+
+      const lq = encodeURIComponent(`'${dir.id}' in parents and trashed=false and name contains '.gpx'`);
+      const lRes = await (await api(`https://www.googleapis.com/drive/v3/files?q=${lq}&pageSize=200&fields=files(id,name)`)).json();
+      const all = lRes.files || [];
+      const seen = seenIds();
+      const fresh = all.filter((f) => !seen.includes(f.id));
+      if (!fresh.length) {
+        onStatus(`Up to date — no new GPX files in “${folder}” (${all.length} known).`);
+        localStorage.setItem(GPX_LAST, String(Date.now()));
+        return { added: 0, skipped: 0, failed: [] };
+      }
+
+      onStatus(`Downloading ${fresh.length} GPX file${fresh.length === 1 ? "" : "s"}…`);
+      const items = [];
+      for (const f of fresh) {
+        const txt = await (await api(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).text();
+        items.push({ name: f.name, text: txt, id: f.id });
+      }
+      const out = Running.importGpxRuns(items);
+      // remember every fetched id (also dupes/failures — no point re-downloading)
+      localStorage.setItem(GPX_SEEN, JSON.stringify([...seen, ...fresh.map((f) => f.id)]));
+      localStorage.setItem(GPX_LAST, String(Date.now()));
+      onStatus((out.added ? "✓ " : "") + Running.gpxSummary(out));
+      return out;
+    } catch (err) {
+      if (!interactive) return null; // silent daily check — stay quiet
+      onStatus("⚠ " + (err.message === "auth-expired" ? "Google session expired — try again." : err.message));
+      return null;
+    }
+  }
+
+  // once per day, on app open: pull new GPX files automatically
+  function maybeAutoImport() {
+    if (Settings.get("gpxAuto") === false) return;
+    const last = parseInt(localStorage.getItem(GPX_LAST), 10) || 0;
+    if (Date.now() - last < 20 * 3600 * 1000) return;
+    importGpx(false, (t) => {
+      const s = document.getElementById("gpxStatus");
+      if (s) s.textContent = t;
+    });
+  }
+
   // ---------- orchestration ----------
   async function connect(interactive = true) {
     setStatus("Connecting…");
@@ -129,6 +190,7 @@ const Drive = (() => {
       localStorage.setItem(FLAG, "1");
       setConnectedUI();
       setStatus("Synced with Google Drive ✓");
+      maybeAutoImport();
     } catch (err) {
       if (err.message === "auth-expired" && !interactive) return; // silent attempt failed; stay local
       connected = false;
@@ -181,5 +243,5 @@ const Drive = (() => {
     }
   }
 
-  return { init };
+  return { init, importGpx };
 })();

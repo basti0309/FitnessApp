@@ -164,6 +164,17 @@
           <p class="muted ai-note" id="aiNote">Claude reads your screenshots and fills the form below. Set your API key in ⚙ Settings first.</p>
         </div>
 
+        <div class="card gpx-card">
+          <h2>Import GPX</h2>
+          <p class="muted">Export the workout from Zepp as GPX — duplicates are detected and skipped automatically, so you can always select or sync everything.</p>
+          <label class="filelabel">
+            <input type="file" id="gpxFiles" accept=".gpx,application/gpx+xml" multiple hidden>
+            <span>📄 Pick GPX files — on iPhone via Files / iCloud Drive</span>
+          </label>
+          <button type="button" class="btn btn-ghost gpx-drive-btn" id="gpxDriveBtn">⇣ Import new GPX from Google Drive</button>
+          <p class="muted" id="gpxStatus">Drive: drop exports into your GPX folder (name in ⚙ Settings) — checked once a day and on tap.</p>
+        </div>
+
         <form id="runForm" class="card form">
           <h2>Run details</h2>
           <label>Date<input type="date" id="rnDate" required></label>
@@ -273,6 +284,11 @@
         </div>
         <label>Threshold pace (mm:ss /km)<input type="text" id="setThrPace" placeholder="auto"></label>
 
+        <h2>GPX import</h2>
+        <p class="muted">Runs exported as GPX (e.g. from Zepp) are pulled from this Google Drive folder — once a day automatically and via the button on the Run tab.</p>
+        <label>Drive folder name<input type="text" id="setGpxFolder" placeholder="Zepp"></label>
+        <label class="check-row"><input type="checkbox" id="setGpxAuto" checked> Check the folder automatically once a day</label>
+
         <button type="submit" class="btn btn-primary">Save settings</button>
         <p class="muted" id="setSaved"></p>
       </form>
@@ -294,6 +310,7 @@
   <script src="js/audio.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/zones.js"></script>
+  <script src="js/gpx.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/charts.js"></script>

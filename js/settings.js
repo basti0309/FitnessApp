@@ -26,6 +26,8 @@ const Settings = (() => {
       hrMax: document.getElementById("setHrMax"),
       lthr: document.getElementById("setLthr"),
       thrPace: document.getElementById("setThrPace"),
+      gpxFolder: document.getElementById("setGpxFolder"),
+      gpxAuto: document.getElementById("setGpxAuto"),
       saved: document.getElementById("setSaved"),
       driveStatus: document.getElementById("driveStatus"),
     };
@@ -33,6 +35,8 @@ const Settings = (() => {
     el.hrMax.value = data.hrMax || "";
     el.lthr.value = data.lthr || "";
     el.thrPace.value = data.thrPace || "";
+    el.gpxFolder.value = data.gpxFolder || "";
+    el.gpxAuto.checked = data.gpxAuto !== false;
 
     el.form.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -40,6 +44,8 @@ const Settings = (() => {
       data.hrMax = el.hrMax.value.trim();
       data.lthr = el.lthr.value.trim();
       data.thrPace = el.thrPace.value.trim();
+      data.gpxFolder = el.gpxFolder.value.trim();
+      data.gpxAuto = el.gpxAuto.checked;
       save();
       el.saved.textContent = "Saved ✓";
       setTimeout(() => (el.saved.textContent = ""), 2000);
@@ -47,7 +53,7 @@ const Settings = (() => {
     });
 
     if (CONFIG.googleClientId) {
-      el.driveStatus.textContent = "Google Drive sync is configured. Sign in from the Run tab to sync across devices.";
+      el.driveStatus.textContent = "Sign in with Google to sync your WODs and runs across devices via your Drive.";
     }
   }
 
