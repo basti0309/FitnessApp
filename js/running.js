@@ -1,8 +1,8 @@
-/* Running tab: log runs (manual or AI-read screenshots), show HR/pace zones
-   and Riegel race predictions derived from logged runs. */
+/* Running tab: log runs (GPX import or manual), show HR/pace zones and race
+   predictions derived from logged runs. */
 const Running = (() => {
   let el = {};
-  let pendingBlocks = [];   // [{ media_type, data }] from screenshots or video frames
+  let predWindow = null;   // days limiting which runs feed predictions (null = all)
 
   // ---------- storage ----------
   const RKEY = "wodbox.runs.v1";
@@ -104,48 +104,21 @@ const Running = (() => {
     const out = importGpxRuns(items);
     el.gpxStatus.textContent = (out.added ? "✓ " : "") + gpxSummary(out);
   }
-
-  // ---------- screenshots ----------
-  async function onFiles(files) {
-    pendingBlocks = [];
-    el.shotPreview.innerHTML = "";
-    el.extractBtn.disabled = true;
-    for (const f of [...files]) {
-      if (f.type.startsWith("image/")) pendingBlocks.push(await AI.fileToBlock(f));
+  function importGpxText(text, source) {
+    if (!text || !text.includes("<gpx")) {
+      el.gpxStatus.textContent = `⚠ The ${source} doesn't contain GPX data.`;
+      return;
     }
-    pendingBlocks.forEach((b) => {
-      const img = document.createElement("img");
-      img.src = `data:${b.media_type};base64,${b.data}`;
-      img.className = "shot-thumb";
-      el.shotPreview.appendChild(img);
-    });
-    el.extractBtn.disabled = pendingBlocks.length === 0;
+    const out = importGpxRuns([{ name: source, text }]);
+    el.gpxStatus.textContent = (out.added ? "✓ " : "") + gpxSummary(out);
   }
-
-  async function extract() {
-    el.extractBtn.disabled = true;
-    el.aiNote.textContent = "Reading with Claude…";
+  async function pasteGpx() {
     try {
-      const run = await AI.extractRun(pendingBlocks);
-      fillForm(run);
-      el.aiNote.textContent = "Filled in — review and save. ✓";
-    } catch (err) {
-      el.aiNote.textContent = "⚠ " + err.message;
-    } finally {
-      el.extractBtn.disabled = pendingBlocks.length === 0;
+      const text = await navigator.clipboard.readText();
+      importGpxText(text, "clipboard");
+    } catch {
+      el.gpxStatus.textContent = "⚠ Couldn't read the clipboard — allow paste access, press ⌘V instead, or use the file picker.";
     }
-  }
-
-  function fillForm(run) {
-    if (run.date) el.date.value = run.date;
-    if (run.title) el.title.value = run.title;
-    if (run.distanceKm != null) el.dist.value = run.distanceKm;
-    if (run.durationSec != null) el.time.value = mmss(run.durationSec);
-    if (run.avgHr != null) el.avgHr.value = run.avgHr;
-    if (run.maxHr != null) el.maxHr.value = run.maxHr;
-    if (run.notes) el.notes.value = run.notes;
-    el.ivList.innerHTML = "";
-    (run.intervals || []).forEach(addIvRow);
   }
 
   // ---------- derive metrics ----------
@@ -224,12 +197,32 @@ const Running = (() => {
         `<tr><td><b>${z.z}</b></td><td>${z.name}</td><td>${Zones.fmtPace(z.slow).replace("/km", "")}–${Zones.fmtPace(z.fast)}</td></tr>`).join("");
   }
 
-  function renderPredictions() {
+  // window presets shared by the range chips
+  const RANGES = [
+    { days: 90, label: "3 mo" }, { days: 180, label: "6 mo" },
+    { days: 365, label: "1 yr" }, { days: null, label: "All" },
+  ];
+  function windowedRuns(days) {
     const runs = RunStore.all();
-    const { hrMax } = deriveHrMax(runs);
+    if (!days) return runs;
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    return runs.filter((r) => r.date >= cutoff);
+  }
+
+  function renderPredictions() {
+    const allRuns = RunStore.all();
+    const runs = windowedRuns(predWindow);
+    const { hrMax } = deriveHrMax(allRuns);
     const bests = Zones.bestEfforts(runs);
+    const windowNote = predWindow ? ` (last ${RANGES.find((r) => r.days === predWindow).label})` : "";
+
+    document.querySelectorAll("#predRange .chip").forEach((b) =>
+      b.classList.toggle("is-active", b.dataset.days === String(predWindow)));
 
     // Best-efforts table (fastest segment per distance, with effort).
+    el.emptyBest.textContent = predWindow && allRuns.length
+      ? `No runs in the selected range${windowNote}.`
+      : "Log a run with splits to see your best efforts.";
     el.emptyBest.style.display = bests.length ? "none" : "block";
     el.bestTable.innerHTML = !bests.length ? "" :
       `<tr><th>Distance</th><th>Time</th><th>Pace</th><th>HR</th><th>Effort</th></tr>` +
@@ -246,7 +239,7 @@ const Running = (() => {
       el.predTable.innerHTML = "";
       return;
     }
-    let basis = `Model: <b>${escape(model.method)}</b>. `;
+    let basis = `Model: <b>${escape(model.method)}</b>, from your runs${escape(windowNote)}. `;
     if (model.cs) {
       basis += `Critical speed ${Zones.fmtPace(model.cs.criticalPace)} (sustainable pace), anaerobic reserve D′ ≈ ${Math.round(model.cs.Dp)} m.`;
     } else {
@@ -282,10 +275,6 @@ const Running = (() => {
   // ---------- init ----------
   function init() {
     el = {
-      shots: document.getElementById("runShots"),
-      shotPreview: document.getElementById("shotPreview"),
-      extractBtn: document.getElementById("extractBtn"),
-      aiNote: document.getElementById("aiNote"),
       form: document.getElementById("runForm"),
       date: document.getElementById("rnDate"),
       title: document.getElementById("rnTitle"),
@@ -315,16 +304,35 @@ const Running = (() => {
 
     el.date.value = new Date().toISOString().slice(0, 10);
 
-    el.shots.addEventListener("change", (e) => onFiles(e.target.files));
-    el.extractBtn.addEventListener("click", extract);
     el.gpxFiles = document.getElementById("gpxFiles");
     el.gpxStatus = document.getElementById("gpxStatus");
     el.gpxDriveBtn = document.getElementById("gpxDriveBtn");
+    el.gpxPasteBtn = document.getElementById("gpxPasteBtn");
     el.gpxFiles.addEventListener("change", (e) => { onGpxFiles(e.target.files); e.target.value = ""; });
     el.gpxDriveBtn.addEventListener("click", async () => {
       el.gpxDriveBtn.disabled = true;
       try { await Drive.importGpx(true, (t) => { el.gpxStatus.textContent = t; }); }
       finally { el.gpxDriveBtn.disabled = false; }
+    });
+    el.gpxPasteBtn.addEventListener("click", pasteGpx);
+    // ⌘V / Ctrl+V anywhere on the Run tab imports GPX from the clipboard
+    document.addEventListener("paste", (e) => {
+      if (!document.getElementById("tab-run").classList.contains("is-active")) return;
+      if (/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "")) return;
+      const text = e.clipboardData?.getData("text") || "";
+      if (text.includes("<gpx")) { e.preventDefault(); importGpxText(text, "clipboard"); }
+    });
+
+    // prediction range chips
+    const predRange = document.getElementById("predRange");
+    RANGES.forEach((r) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (r.days === predWindow ? " is-active" : "");
+      b.dataset.days = String(r.days);
+      b.textContent = r.label;
+      b.addEventListener("click", () => { predWindow = r.days; renderPredictions(); });
+      predRange.appendChild(b);
     });
     el.addIv.addEventListener("click", () => addIvRow());
 
@@ -349,10 +357,7 @@ const Running = (() => {
       el.form.reset();
       el.date.value = new Date().toISOString().slice(0, 10);
       el.ivList.innerHTML = "";
-      el.shotPreview.innerHTML = "";
-      pendingBlocks = [];
-      el.extractBtn.disabled = true;
-      el.aiNote.textContent = "Saved ✓ — log another, or check Zones & Predictions.";
+      el.gpxStatus.textContent = "Saved ✓ — log another, or check Progress & Predictions.";
       refresh();
     });
 

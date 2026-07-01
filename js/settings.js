@@ -1,4 +1,4 @@
-/* Per-device settings: Anthropic API key + optional physiology overrides.
+/* Per-device settings: physiology overrides + GPX import preferences.
    Kept in localStorage only — never synced to the cloud document. */
 const Settings = (() => {
   const KEY = "wodbox.settings.v1";
@@ -11,7 +11,6 @@ const Settings = (() => {
   function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
 
   function get(k) { return data[k]; }
-  function apiKey() { return (data.apiKey || "").trim(); }
 
   // profile overrides (numbers or null)
   function hrMaxOverride() { return num(data.hrMax); }
@@ -22,7 +21,6 @@ const Settings = (() => {
   function init() {
     const el = {
       form: document.getElementById("settingsForm"),
-      key: document.getElementById("setKey"),
       hrMax: document.getElementById("setHrMax"),
       lthr: document.getElementById("setLthr"),
       thrPace: document.getElementById("setThrPace"),
@@ -31,7 +29,6 @@ const Settings = (() => {
       saved: document.getElementById("setSaved"),
       driveStatus: document.getElementById("driveStatus"),
     };
-    el.key.value = data.apiKey || "";
     el.hrMax.value = data.hrMax || "";
     el.lthr.value = data.lthr || "";
     el.thrPace.value = data.thrPace || "";
@@ -40,7 +37,6 @@ const Settings = (() => {
 
     el.form.addEventListener("submit", (e) => {
       e.preventDefault();
-      data.apiKey = el.key.value.trim();
       data.hrMax = el.hrMax.value.trim();
       data.lthr = el.lthr.value.trim();
       data.thrPace = el.thrPace.value.trim();
@@ -57,5 +53,5 @@ const Settings = (() => {
     }
   }
 
-  return { init, get, apiKey, hrMaxOverride, lthrOverride, thrPaceOverride };
+  return { init, get, hrMaxOverride, lthrOverride, thrPaceOverride };
 })();

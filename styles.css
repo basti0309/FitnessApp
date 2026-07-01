@@ -162,16 +162,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); bo
 .del-btn:hover { color: var(--accent); }
 .empty { text-align: center; color: var(--muted); padding: 28px 0; }
 
-/* ---------- run: screenshots ---------- */
+/* ---------- run: GPX upload ---------- */
 .filelabel {
   display: block; border: 1px dashed var(--line); border-radius: 12px;
   padding: 18px; text-align: center; color: var(--muted); cursor: pointer;
   font-weight: 600; background: rgba(0,0,0,.12);
 }
 .filelabel:hover { border-color: var(--accent); color: var(--txt); }
-.shot-preview { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-.shot-thumb { width: 70px; height: 70px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
-.ai-note { margin: 8px 0 0; }
 .badge.run { background: #14283a; color: #7fd0ff; }
 
 /* interval rows */
@@ -211,6 +208,11 @@ code { background: var(--bg-elev); padding: 1px 5px; border-radius: 4px; font-si
   cursor: pointer; white-space: nowrap; transition: .15s;
 }
 .chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* range picker: quieter than the distance chips, active = filled dark */
+.chips-range { margin-top: 2px; }
+.chips-range .chip { padding: 5px 11px; font-size: .76rem; border-color: transparent; }
+.chips-range .chip.is-active { background: var(--bg-card); border-color: var(--line); color: var(--txt); }
+#predRange { margin: 0 0 14px; }
 
 /* ---------- charts ---------- */
 .chart-card h2 { margin-top: 0; }
@@ -245,6 +247,7 @@ code { background: var(--bg-elev); padding: 1px 5px; border-radius: 4px; font-si
 /* ---------- GPX import ---------- */
 .gpx-card .filelabel { margin: 4px 0 10px; }
 .gpx-drive-btn { width: 100%; }
+.gpx-drive-btn + .gpx-drive-btn { margin-top: 8px; }
 .check-row {
   flex-direction: row !important; align-items: center; gap: 9px !important;
   font-size: .85rem !important;

@@ -27,7 +27,8 @@ optionally synced across devices via your own Google Drive.
 
 ### Running
 - **GPX import (Zepp & co.):** pick exported `.gpx` files — on iPhone straight
-  from Files / iCloud Drive — or drop them into a Google Drive folder and let
+  from Files / iCloud Drive — **paste GPX from the clipboard** (button or
+  simply ⌘V on the Run tab), or drop them into a Google Drive folder and let
   the app pull them: on tap ("Import new GPX from Google Drive") and
   automatically once a day when the app opens. The parser computes distance,
   moving time, avg/max heart rate, and clean **1-km splits with per-split HR**
@@ -35,9 +36,8 @@ optionally synced across devices via your own Google Drive.
   syncs with your data), so re-selecting or re-syncing everything is always
   safe. iCloud Drive has no web API, so the folder automation is
   Google-Drive-only; the Files picker covers the iCloud path.
-- **Log a run from screenshots:** upload watch/app screenshots and Claude
-  (your own Anthropic API key, stored on-device) extracts date, distance,
-  time, heart rate, and **every split** into the form.
+- **Manual logging:** the run form (date, distance, time, HR, intervals,
+  notes) is always available for anything without a GPX file.
 - **HR & pace zones** (Z1–Z5), auto-derived from your runs or profile
   overrides in Settings.
 - **Best efforts:** fastest 1 km / 1 mile / 2 km / 5 km / 10 km / 15 km / Half
@@ -47,7 +47,8 @@ optionally synced across devices via your own Google Drive.
   **HR-adjusted Critical Speed model**: sub-maximal efforts are first scaled
   to estimated max effort from %HRmax (Swain), then a 2-parameter Critical
   Speed fit (with Riegel extrapolation beyond 10 km; Riegel fallback when only
-  one distance is available).
+  one distance is available). A **timeframe picker** (3 mo / 6 mo / 1 yr / all)
+  limits which runs feed the model — current form instead of all-time bests.
 
 ### Progress (analytics)
 - **Stat tiles:** 4-week distance (with delta vs the prior 4 weeks), runs and
@@ -55,7 +56,8 @@ optionally synced across devices via your own Google Drive.
   WODs in the last 4 weeks.
 - **Prediction trend** *(chart)*: your predicted race time recomputed after
   every logged run — the model only ever sees runs up to that date — with a
-  distance picker (1 km … Marathon). Lower is faster.
+  distance picker (1 km … Marathon) and a timeframe picker (3 mo / 6 mo /
+  1 yr / all) for the displayed window. Lower is faster.
 - **Weekly distance** *(chart)*: km per week over the last 12 weeks.
 - **Time in HR zones** *(chart)*: intensity mix of the last 4 weeks from your
   splits' heart rates (stacked bar + legend).
@@ -83,7 +85,6 @@ optionally synced across devices via your own Google Drive.
 | `js/storage.js` | `localStorage` persistence for WODs |
 | `js/zones.js` | Running math: best efforts, zones, Critical Speed model |
 | `js/gpx.js` | GPX parser: distance, moving time, HR, auto 1-km splits |
-| `js/ai.js` | Claude vision call for screenshot extraction |
 | `js/settings.js` | Device-only settings (API key, HR/pace overrides) |
 | `js/charts.js` | Dependency-free SVG charts (line, bars, stacked bar) |
 | `js/timer.js` | Timer state machine (Tabata / EMOM / AMRAP / For Time) |
@@ -97,6 +98,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-01 | **Timeframe picker** (3 mo/6 mo/1 yr/all) for the prediction trend and the prediction model; **paste GPX from clipboard** (button + ⌘V); screenshot/AI upload removed (GPX replaced it) |
 | 2026-07-01 | **GPX import**: file picker (iPhone Files/iCloud) + Google Drive folder pull with daily auto-check; parser with 1-km splits & HR; duplicate detection via GPX start time |
 | 2026-07-01 | **Progress analytics**: prediction-trend chart, weekly distance, time-in-zones, PR table with NEW badges, 4-week stat tiles; SVG chart engine with tooltips + table view; screen-recording import removed |
 | 2026-06-30 | EMOM mode, Sets + set-rest for Tabata/EMOM, Safari alignment pass |
