@@ -153,26 +153,16 @@
 
       <!-- ---- add a run ---- -->
       <div id="runAdd">
-        <div class="card">
-          <h2>Add a run</h2>
-          <label class="filelabel">
-            <input type="file" id="runShots" accept="image/*" multiple hidden>
-            <span>📷 Upload screenshots — intervals, heart rate, summary</span>
-          </label>
-          <div id="shotPreview" class="shot-preview"></div>
-          <button class="btn btn-primary" id="extractBtn" disabled>Read with AI ✨</button>
-          <p class="muted ai-note" id="aiNote">Claude reads your screenshots and fills the form below. Set your API key in ⚙ Settings first.</p>
-        </div>
-
         <div class="card gpx-card">
           <h2>Import GPX</h2>
-          <p class="muted">Export the workout from Zepp as GPX — duplicates are detected and skipped automatically, so you can always select or sync everything.</p>
+          <p class="muted">Export the workout from Zepp as GPX — duplicates are detected and skipped automatically, so you can always select, paste, or sync everything.</p>
           <label class="filelabel">
             <input type="file" id="gpxFiles" accept=".gpx,application/gpx+xml" multiple hidden>
             <span>📄 Pick GPX files — on iPhone via Files / iCloud Drive</span>
           </label>
+          <button type="button" class="btn btn-ghost gpx-drive-btn" id="gpxPasteBtn">📋 Paste GPX from clipboard</button>
           <button type="button" class="btn btn-ghost gpx-drive-btn" id="gpxDriveBtn">⇣ Import new GPX from Google Drive</button>
-          <p class="muted" id="gpxStatus">Drive: drop exports into your GPX folder (name in ⚙ Settings) — checked once a day and on tap.</p>
+          <p class="muted" id="gpxStatus">Drive: drop exports into your GPX folder (name in ⚙ Settings) — checked once a day and on tap. Or copy a GPX file's text and paste it here (⌘V works too).</p>
         </div>
 
         <form id="runForm" class="card form">
@@ -211,6 +201,7 @@
           <h2>Prediction trend</h2>
           <p class="muted">Your predicted race time, recomputed after every run you log. Lower is faster.</p>
           <div class="chips" id="predChips"></div>
+          <div class="chips chips-range" id="evoRange"></div>
           <div class="chart-host" id="evoChart"></div>
           <p class="empty hidden" id="emptyEvo"></p>
         </div>
@@ -251,6 +242,7 @@
 
       <!-- ---- predictions ---- -->
       <div id="runPredict" class="hidden">
+        <div class="chips chips-range" id="predRange"></div>
         <div class="card">
           <h2>Best efforts</h2>
           <p class="muted">Fastest segment at each distance across your runs (from your splits), with the heart rate on that segment.</p>
@@ -269,13 +261,6 @@
     <!-- ============ SETTINGS ============ -->
     <section id="tab-settings" class="panel">
       <form id="settingsForm" class="card form">
-        <h2>Settings</h2>
-
-        <label>Anthropic API key
-          <input type="password" id="setKey" placeholder="sk-ant-…" autocomplete="off">
-        </label>
-        <p class="muted">Used in your browser only to read run screenshots with Claude. Stored on this device, never uploaded. Get one at console.anthropic.com and set a spend limit.</p>
-
         <h2>Profile (optional)</h2>
         <p class="muted">Leave blank to auto-derive from your runs.</p>
         <div class="row">
@@ -311,7 +296,6 @@
   <script src="js/storage.js"></script>
   <script src="js/zones.js"></script>
   <script src="js/gpx.js"></script>
-  <script src="js/ai.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/timer.js"></script>

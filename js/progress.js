@@ -11,7 +11,12 @@ const Progress = (() => {
   const ZONE_RAMP = ["#b7d3f6", "#86b6ef", "#5598e7", "#2a78d6", "#1c5cab"]; // ordinal Z1→Z5
   const RKEY = "wodbox.runs.v1";
   let el = {};
-  let target = "5 km"; // selected prediction distance
+  let target = "5 km";   // selected prediction distance
+  let rangeDays = null;  // displayed window for the trend chart (null = all)
+  const RANGES = [
+    { days: 90, label: "3 mo" }, { days: 180, label: "6 mo" },
+    { days: 365, label: "1 yr" }, { days: null, label: "All" },
+  ];
 
   function runsAll() {
     let list;
@@ -49,16 +54,24 @@ const Progress = (() => {
 
   function renderEvolution() {
     const runs = runsAll();
-    const pts = evolution(runs, target);
+    let pts = evolution(runs, target);
+    const hadAny = pts.length > 0;
+    if (rangeDays) {
+      const cutoff = Date.now() - rangeDays * 86400000;
+      pts = pts.filter((p) => p.x >= cutoff);
+    }
 
     el.predChips.querySelectorAll(".chip").forEach((b) =>
       b.classList.toggle("is-active", b.dataset.t === target));
+    el.evoRange.querySelectorAll(".chip").forEach((b) =>
+      b.classList.toggle("is-active", b.dataset.days === String(rangeDays)));
 
     if (pts.length < 2) {
       el.evoChart.replaceChildren();
       el.emptyEvo.classList.remove("hidden");
-      el.emptyEvo.textContent = pts.length === 1
-        ? "One data point so far — log another run and the trend line appears."
+      el.emptyEvo.textContent =
+        hadAny && rangeDays ? `Fewer than two data points in the last ${RANGES.find((r) => r.days === rangeDays).label} — pick a wider range.`
+        : pts.length === 1 ? "One data point so far — log another run and the trend line appears."
         : "Log runs (splits help) to see how your predicted times develop.";
       return;
     }
@@ -253,6 +266,7 @@ const Progress = (() => {
     el = {
       statGrid: document.getElementById("statGrid"),
       predChips: document.getElementById("predChips"),
+      evoRange: document.getElementById("evoRange"),
       evoChart: document.getElementById("evoChart"),
       emptyEvo: document.getElementById("emptyEvo"),
       volChart: document.getElementById("volChart"),
@@ -271,6 +285,16 @@ const Progress = (() => {
       b.textContent = t.label;
       b.addEventListener("click", () => { target = t.label; renderTiles(); renderEvolution(); });
       el.predChips.appendChild(b);
+    });
+    // display-window chips for the trend chart
+    RANGES.forEach((r) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (r.days === rangeDays ? " is-active" : "");
+      b.dataset.days = String(r.days);
+      b.textContent = r.label;
+      b.addEventListener("click", () => { rangeDays = r.days; renderEvolution(); });
+      el.evoRange.appendChild(b);
     });
     document.addEventListener("settings-changed", () => { if (visible()) render(); });
     document.addEventListener("data-applied", () => { if (visible()) render(); });
