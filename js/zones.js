@@ -52,11 +52,13 @@ const Zones = (() => {
   ];
 
   // Turn a run into ordered laps; fall back to one whole-run "lap".
+  // Grade-adjusted (flat-equivalent) times are used when the import computed
+  // them, so hills don't hide fitness from the best-effort/prediction models.
   function lapsOf(run) {
     const ivs = (run.intervals || []).filter((i) => i.distanceKm > 0 && i.durationSec > 0);
-    if (ivs.length) return ivs.map((i) => ({ d: i.distanceKm, t: i.durationSec, h: i.avgHr || null }));
+    if (ivs.length) return ivs.map((i) => ({ d: i.distanceKm, t: i.gapDurationSec || i.durationSec, h: i.avgHr || null }));
     if (run.distanceKm > 0 && run.durationSec > 0)
-      return [{ d: run.distanceKm, t: run.durationSec, h: run.avgHr || null }];
+      return [{ d: run.distanceKm, t: run.gapDurationSec || run.durationSec, h: run.avgHr || null }];
     return [];
   }
 
@@ -87,8 +89,9 @@ const Zones = (() => {
   // whole-run normalized to a target distance (so sparse/partial splits don't
   // hide the overall effort)
   function wholeSeg(run, target) {
-    if (run.distanceKm >= target - 1e-6 && run.durationSec > 0)
-      return { sec: run.durationSec * (target / run.distanceKm), hr: run.avgHr || null };
+    const t = run.gapDurationSec || run.durationSec;
+    if (run.distanceKm >= target - 1e-6 && t > 0)
+      return { sec: t * (target / run.distanceKm), hr: run.avgHr || null };
     return null;
   }
 
