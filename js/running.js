@@ -37,6 +37,13 @@ const Running = (() => {
     const d = new Date(iso + "T00:00:00");
     return isNaN(d) ? iso : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   }
+  // Describe whichever HR correction(s) were applied to a run.
+  function hrFixText(fix) {
+    const parts = [];
+    if (fix.windowSec > 0) parts.push(`HR-Start korrigiert (0:00–${Zones.fmtTime(fix.windowSec)})`);
+    if (fix.effort) parts.push(`HR im Belastungsabschnitt korrigiert (${Zones.fmtTime(fix.effort.from)}–${Zones.fmtTime(fix.effort.to)})`);
+    return parts.join(" · ") || "HR korrigiert";
+  }
   // ---------- GPX import ----------
   // items: [{ name, text }] — parse, skip anything already imported, save.
   function importGpxRuns(items) {
@@ -168,7 +175,7 @@ const Running = (() => {
               <span class="wod-name">${escape(r.title || "Run")}</span>
             </div>
             <div class="wod-ex">${r.distanceKm ?? "—"} km · ${Zones.fmtTime(r.durationSec)} · ${pace}${gap}${elev}${r.avgHr ? " · " + r.avgHr + " bpm" : ""}</div>
-            ${r.hrFix?.corrected ? `<div class="wod-meta hr-fixed">⚠ HR-Start korrigiert (0:00–${Zones.fmtTime(r.hrFix.windowSec)})${r.rawMaxHr ? ` · roh ${r.rawAvgHr}/${r.rawMaxHr} bpm` : ""}</div>` : ""}
+            ${r.hrFix?.corrected ? `<div class="wod-meta hr-fixed">⚠ ${hrFixText(r.hrFix)}${r.rawMaxHr ? ` · roh ${r.rawAvgHr}/${r.rawMaxHr} bpm` : ""}</div>` : ""}
             ${r.intervals?.length ? `<div class="wod-meta">${r.intervals.length} intervals</div>` : ""}
             <div class="wod-meta">${fmtDate(r.date)}</div>
             ${r.notes ? `<div class="wod-notes">${escape(r.notes)}</div>` : ""}
@@ -199,7 +206,7 @@ const Running = (() => {
     el.rdHrToggle.hidden = !hasFix;
     el.rdHrToggle.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.hr === "corrected"));
     el.rdHrHint.textContent = hasFix
-      ? `HR-Start korrigiert (0:00–${Zones.fmtTime(run.hrFix.windowSec)}). Umschalten für die Originalkurve.`
+      ? `${hrFixText(run.hrFix)}. Umschalten für die Originalkurve.`
       : "";
     el.runDetail.classList.remove("hidden");
     document.body.style.overflow = "hidden";
