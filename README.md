@@ -87,10 +87,12 @@ optionally synced across devices via your own Google Drive.
 - **Stat tiles:** 4-week distance (with delta vs the prior 4 weeks), runs and
   time on feet, current predicted race time (with delta vs 4 weeks ago), and
   WODs in the last 4 weeks.
-- **Prediction trend** *(chart)*: your predicted race time recomputed after
-  every logged run — the model only ever sees runs up to that date — with a
-  distance picker (1 km … Marathon) and a timeframe picker (3 mo / 6 mo /
-  1 yr / all) for the displayed window. Lower is faster.
+- **Prediction trend** *(chart)*: your predicted race time for **every day**
+  up to today (not only run days) — the model only ever sees runs up to that
+  date, recency-weighted as of that date, so between runs the estimate drifts
+  as efforts age and snaps when a new run is logged; the last point is always
+  today. Distance picker (1 km … Marathon) + timeframe picker (3 mo / 6 mo /
+  1 yr / all). Lower is faster.
 - **Weekly distance** *(chart)*: km per week over the last 12 weeks.
 - **Time in HR zones** *(chart)*: intensity mix of the last 4 weeks from your
   splits' heart rates (stacked bar + legend).
@@ -135,6 +137,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | Prediction trend now plots a recency-corrected point for every day up to today (drifts between runs, snaps on a new run), not just on run days |
 | 2026-07-02 | Predictions: reject a degenerate Critical-Speed fit (implausible D′ / poor goodness-of-fit that predicted e.g. a 2:14 first km) and fall back to the race-like anchor — 5k now ~20:52 for the user's data instead of 22:43; CS still used for clean maximal data |
 | 2026-07-02 | Predictions fixed: anchor the fallback on the most race-like effort (highest %HRmax) instead of the longest run (easy long runs no longer drag the estimate slow); softened recency to an 8-week half-life / 8% cap |
 | 2026-07-02 | HR reconstruction improved: reference model fit on the reliable run tail + cardiac-drift term (rebuilds a realistic rising warm-up, not a flat average); fixed the linear solver |
