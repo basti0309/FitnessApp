@@ -32,6 +32,10 @@ const Progress = (() => {
   }
   function dayMs(iso) { return new Date(iso + "T00:00:00").getTime(); }
   function isoOf(d) { return d.toISOString().slice(0, 10); }
+  // local-calendar ISO (run.date is a local date; avoids UTC off-by-one)
+  function isoLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
   function mondayOf(iso) {
     const d = new Date(iso + "T00:00:00");
     const off = (d.getDay() + 6) % 7;
@@ -39,20 +43,42 @@ const Progress = (() => {
     return d;
   }
 
-  /* ---------- prediction evolution (the model replayed through time) ---------- */
-  function evolution(runs, label) {
-    const dates = [...new Set(runs.map((r) => r.date))];
-    const pts = [];
-    for (const date of dates) {
-      const subset = runs.filter((r) => r.date <= date);
-      // recency-weight efforts as of THIS date, so the trend reflects the
-      // form you actually had then (it can rise again if you detrain)
-      const bests = Zones.bestEfforts(subset, { recency: true, asOf: dayMs(date) });
-      const model = Zones.predictRaces(bests, hrMaxFor(subset));
-      const p = model && model.predictions.find((q) => q.label === label);
-      if (p && isFinite(p.sec) && p.sec > 0) pts.push({ x: dayMs(date), xLabel: date, y: Math.round(p.sec) });
+  /* ---------- prediction evolution (the model replayed through time) ----------
+     A point for EVERY day from the first run to today — not just run days — so
+     the recency factor is visible: between runs the prediction drifts (efforts
+     age → gentle slow-down), and it snaps when a new run is logged. The last
+     point is always today. Daily models are cached (all distances at once) so
+     switching the distance/range or re-rendering the tile is instant. */
+  let _daily = { sig: null, days: [] };
+  function dailyModels(runs) {
+    const sig = runs.map((r) => r.id).join(",") + "|" + (Settings.hrMaxOverride() || "") + "|" + isoLocal(new Date());
+    if (_daily.sig === sig) return _daily.days;
+    const days = [];
+    if (runs.length) {
+      const start = new Date(runs[0].date + "T00:00:00");
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const span = Math.round((today - start) / 86400000) + 1;
+      const step = span > 500 ? Math.ceil(span / 500) : 1;   // keep ≤ ~500 points
+      const at = (date) => {
+        const subset = runs.filter((r) => r.date <= date);
+        const model = subset.length
+          ? Zones.predictRaces(Zones.bestEfforts(subset, { recency: true, asOf: dayMs(date) }), hrMaxFor(subset))
+          : null;
+        const preds = {};
+        if (model) model.predictions.forEach((p) => { if (isFinite(p.sec) && p.sec > 0) preds[p.label] = Math.round(p.sec); });
+        return { x: dayMs(date), xLabel: date, preds };
+      };
+      for (let d = new Date(start); d <= today; d.setDate(d.getDate() + step)) days.push(at(isoLocal(d)));
+      const todayIso = isoLocal(today);
+      if (!days.length || days[days.length - 1].xLabel !== todayIso) days.push(at(todayIso)); // last point = today
     }
-    return pts;
+    _daily = { sig, days };
+    return days;
+  }
+  function evolution(runs, label) {
+    return dailyModels(runs)
+      .map((d) => (d.preds[label] != null ? { x: d.x, xLabel: d.xLabel, y: d.preds[label] } : null))
+      .filter(Boolean);
   }
 
   function renderEvolution() {
