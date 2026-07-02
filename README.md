@@ -45,6 +45,17 @@ optionally synced across devices via your own Google Drive.
   syncs with your data), so re-selecting or re-syncing everything is always
   safe. iCloud Drive has no web API, so the folder automation is
   Google-Drive-only; the Files picker covers the iCloud path.
+- **HR artifact correction:** wrist optical-HR sensors often misread at the
+  start (a false spike, then — after a stop — a slow settle) before locking on.
+  The importer learns the runner's HR↔effort relationship from the settled part
+  of the run, detects the initial decoupled window (both too-high and too-low,
+  bridging real pauses), and reconstructs it from the effort model plus a
+  physiological onset ramp (τ≈45 s); isolated spikes elsewhere are removed with a
+  Hampel filter. All HR-based figures (avg/max, splits, zones, effort labels,
+  predictions, max-HR derivation) use the cleaned signal; raw values are kept.
+- **Run detail (tap a run in History):** Zepp-style **pace and HR profile**
+  charts (filled area, crosshair tooltip), with a **toggle between the corrected
+  and the original HR curve** when a correction was applied.
 - **HR & pace zones** (Z1–Z5), auto-derived from your runs or profile
   overrides in Settings.
 - **Best efforts:** fastest 1 km / 1 mile / 2 km / 5 km / 10 km / 15 km / Half
@@ -117,6 +128,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | **HR artifact correction** (Variant B): detect the early optical-sensor warm-up window from HR↔effort decoupling (pause-aware) and reconstruct it (effort model + onset ramp) + Hampel despike; feeds all HR calculations, raw kept. **Run-detail pace/HR profile charts** with corrected↔original HR toggle |
 | 2026-07-02 | **Recency-weighted predictions**: best efforts feeding the race predictions fade with a 42-day fitness half-life (Banister / TrainingPeaks CTL), bounded ≤12% (detraining data); PRs stay all-time; no re-import needed |
 | 2026-07-02 | **Point-exact personal records**: best efforts computed from raw GPX track points (sliding window, not km-split-aligned), real times for PRs vs GAP for predictions, duplicate imports backfill the new analysis |
 | 2026-07-02 | **Run tab restructure**: GPX-only import (manual run form removed), run history moved to its own History sub-tab, Predictions view folded into Progress |

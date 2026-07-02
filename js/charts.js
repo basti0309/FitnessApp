@@ -339,5 +339,93 @@ const Charts = (() => {
       `L${x + rl},${y + h} Q${x},${y + h} ${x},${y + h - rl} L${x},${y + rl} Q${x},${y} ${x + rl},${y} Z`;
   }
 
-  return { line, bars, stack };
+  /* ---------------- area profile (pace / HR over time) ----------------
+     points: [{x: seconds, y: value|null}] — null breaks the area (pauses).
+     yKind "pace" inverts (faster = higher) and formats mm:ss. */
+  let gradSeq = 0;
+  function area(host, opts) { mount(host, () => drawArea(host, opts)); }
+  function drawArea(host, { points, color, yKind = "hr", seriesName = "", xMax }) {
+    host.replaceChildren();
+    const solid = points.filter((p) => p.y != null);
+    if (solid.length < 2) return;
+    const invert = yKind === "pace";
+    const fmtY = yKind === "pace" ? (v) => Zones.fmtPace(v).replace("/km", "") : (v) => String(Math.round(v));
+
+    const wrap = div("chart-wrap");
+    host.appendChild(wrap);
+    const W = Math.max(260, wrap.clientWidth || host.clientWidth || 480);
+    const H = 168, padL = 46, padR = 12, padT = 12, padB = 22;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+
+    const ys = solid.map((p) => p.y);
+    let yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const spread = Math.max(yMax - yMin, yKind === "pace" ? 30 : 10);
+    yMin -= spread * 0.12; yMax += spread * 0.12;
+    const xmax = xMax || Math.max(...points.map((p) => p.x)) || 1;
+    const X = (x) => padL + (x / xmax) * plotW;
+    const Y = (v) => invert
+      ? padT + ((v - yMin) / (yMax - yMin)) * plotH
+      : padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+    const baseY = padT + plotH;
+
+    const svg = S("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", tabindex: "0" });
+    svg.setAttribute("aria-label", seriesName || "profile");
+    const gid = "grad" + (++gradSeq);
+    const defs = S("defs");
+    const lg = S("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
+    lg.appendChild(S("stop", { offset: "0%", "stop-color": color, "stop-opacity": 0.55 }));
+    lg.appendChild(S("stop", { offset: "100%", "stop-color": color, "stop-opacity": 0.04 }));
+    defs.appendChild(lg); svg.appendChild(defs);
+
+    // y grid + labels
+    const yTicks = (yKind === "pace" ? niceTimeTicks : niceTicks)(yMin, yMax, 4);
+    yTicks.forEach((tk) => {
+      if (tk < yMin || tk > yMax) return;
+      svg.appendChild(S("line", { x1: padL, x2: W - padR, y1: Y(tk), y2: Y(tk), stroke: GRID, "stroke-width": 1 }));
+      const lab = S("text", { x: padL - 6, y: Y(tk) + 3.5, "text-anchor": "end", fill: MUTED, "font-size": 10.5 });
+      lab.textContent = fmtY(tk);
+      svg.appendChild(lab);
+    });
+    // x time labels
+    [0, 0.25, 0.5, 0.75, 1].forEach((f) => {
+      const sec = f * xmax;
+      const tx = S("text", { x: X(sec), y: H - 7, "text-anchor": f === 0 ? "start" : f === 1 ? "end" : "middle", fill: MUTED, "font-size": 10.5 });
+      tx.textContent = Zones.fmtTime(sec);
+      svg.appendChild(tx);
+    });
+
+    // filled area, broken at gaps (pauses)
+    let seg = [];
+    const flush = () => {
+      if (seg.length > 1) {
+        const top = seg.map((p, i) => `${i ? "L" : "M"}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join("");
+        svg.appendChild(S("path", { d: `${top} L${X(seg[seg.length - 1].x).toFixed(1)},${baseY} L${X(seg[0].x).toFixed(1)},${baseY} Z`, fill: `url(#${gid})` }));
+        svg.appendChild(S("path", { d: top, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      }
+      seg = [];
+    };
+    points.forEach((p) => { if (p.y == null) flush(); else seg.push(p); });
+    flush();
+
+    // crosshair + tooltip
+    const cross = S("line", { y1: padT, y2: padT + plotH, stroke: MUTED, "stroke-width": 1, opacity: 0 });
+    const dot = S("circle", { r: 4, fill: color, stroke: SURFACE, "stroke-width": 2, opacity: 0 });
+    svg.appendChild(cross); svg.appendChild(dot);
+    wrap.appendChild(svg);
+    const tip = makeTip(wrap);
+    function showAt(px) {
+      let best = null, bd = Infinity;
+      for (const p of solid) { const d = Math.abs(X(p.x) - px); if (d < bd) { bd = d; best = p; } }
+      if (!best) return;
+      cross.setAttribute("x1", X(best.x)); cross.setAttribute("x2", X(best.x)); cross.setAttribute("opacity", 0.6);
+      dot.setAttribute("cx", X(best.x)); dot.setAttribute("cy", Y(best.y)); dot.setAttribute("opacity", 1);
+      const scale = wrap.clientWidth / W || 1;
+      tip.show([{ color, value: fmtY(best.y) + (yKind === "pace" ? "/km" : " bpm"), label: `${seriesName ? seriesName + " · " : ""}${Zones.fmtTime(best.x)}` }], X(best.x) * scale, Y(best.y) * scale);
+    }
+    function hide() { cross.setAttribute("opacity", 0); dot.setAttribute("opacity", 0); tip.hide(); }
+    svg.addEventListener("pointermove", (e) => { const r = svg.getBoundingClientRect(); showAt(((e.clientX - r.left) / r.width) * W); });
+    svg.addEventListener("pointerleave", hide);
+  }
+
+  return { line, bars, stack, area };
 })();
