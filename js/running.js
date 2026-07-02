@@ -1,8 +1,7 @@
-/* Running tab: log runs (GPX import or manual), show HR/pace zones and race
-   predictions derived from logged runs. */
+/* Running tab: import runs from GPX, show HR/pace zones and run history.
+   All analytics (trend, volume, zones mix, PRs) live in the Progress view. */
 const Running = (() => {
   let el = {};
-  let predWindow = null;   // days limiting which runs feed predictions (null = all)
 
   // ---------- storage ----------
   const RKEY = "wodbox.runs.v1";
@@ -34,38 +33,6 @@ const Running = (() => {
     const d = new Date(iso + "T00:00:00");
     return isNaN(d) ? iso : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   }
-  function mmss(sec) {
-    if (sec == null) return "";
-    const m = Math.floor(sec / 60), s = Math.round(sec % 60);
-    return `${m}:${String(s).padStart(2, "0")}`;
-  }
-
-  // ---------- interval rows ----------
-  function addIvRow(iv = {}) {
-    const li = document.createElement("li");
-    li.className = "iv-row";
-    li.innerHTML = `
-      <input type="text" class="iv-label" placeholder="lap" value="${escape(iv.label || "")}">
-      <input type="text" class="iv-dist" placeholder="km" value="${iv.distanceKm ?? ""}" inputmode="decimal">
-      <input type="text" class="iv-time" placeholder="mm:ss" value="${iv.durationSec != null ? mmss(iv.durationSec) : ""}">
-      <input type="text" class="iv-hr" placeholder="hr" value="${iv.avgHr ?? ""}" inputmode="numeric">
-      <button type="button" class="ex-del" title="Remove">✕</button>`;
-    li.querySelector(".ex-del").addEventListener("click", () => li.remove());
-    el.ivList.appendChild(li);
-  }
-  function readIntervals() {
-    return [...el.ivList.querySelectorAll(".iv-row")].map((row) => {
-      const distanceKm = parseFloat(row.querySelector(".iv-dist").value) || null;
-      const durationSec = Zones.parseTime(row.querySelector(".iv-time").value) || null;
-      const avgHr = parseInt(row.querySelector(".iv-hr").value, 10) || null;
-      return {
-        label: row.querySelector(".iv-label").value.trim() || null,
-        distanceKm, durationSec, avgHr,
-        paceSecPerKm: distanceKm && durationSec ? durationSec / distanceKm : null,
-      };
-    }).filter((iv) => iv.distanceKm || iv.durationSec || iv.label);
-  }
-
   // ---------- GPX import ----------
   // items: [{ name, text }] — parse, skip anything already imported, save.
   function importGpxRuns(items) {
@@ -211,66 +178,9 @@ const Running = (() => {
         `<tr><td><b>${z.z}</b></td><td>${z.name}</td><td>${Zones.fmtPace(z.slow).replace("/km", "")}–${Zones.fmtPace(z.fast)}</td></tr>`).join("");
   }
 
-  // window presets shared by the range chips
-  const RANGES = [
-    { days: 90, label: "3 mo" }, { days: 180, label: "6 mo" },
-    { days: 365, label: "1 yr" }, { days: null, label: "All" },
-  ];
-  function windowedRuns(days) {
-    const runs = RunStore.all();
-    if (!days) return runs;
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-    return runs.filter((r) => r.date >= cutoff);
-  }
-
-  function renderPredictions() {
-    const allRuns = RunStore.all();
-    const runs = windowedRuns(predWindow);
-    const { hrMax } = deriveHrMax(allRuns);
-    const bests = Zones.bestEfforts(runs);
-    const windowNote = predWindow ? ` (last ${RANGES.find((r) => r.days === predWindow).label})` : "";
-
-    document.querySelectorAll("#predRange .chip").forEach((b) =>
-      b.classList.toggle("is-active", b.dataset.days === String(predWindow)));
-
-    // Best-efforts table (fastest segment per distance, with effort).
-    el.emptyBest.textContent = predWindow && allRuns.length
-      ? `No runs in the selected range${windowNote}.`
-      : "Log a run with splits to see your best efforts.";
-    el.emptyBest.style.display = bests.length ? "none" : "block";
-    el.bestTable.innerHTML = !bests.length ? "" :
-      `<tr><th>Distance</th><th>Time</th><th>Pace</th><th>HR</th><th>Effort</th></tr>` +
-      bests.map((b) => {
-        const frac = b.hr && hrMax ? b.hr / hrMax : null;
-        return `<tr><td>${b.label}</td><td><b>${Zones.fmtTime(b.sec)}</b></td><td>${Zones.fmtPace(b.pace)}</td>` +
-          `<td>${b.hr || "—"}</td><td>${Zones.effortLabel(frac)}</td></tr>`;
-      }).join("");
-
-    // Predictions: HR-adjusted Critical Speed model (Riegel fallback).
-    const model = Zones.predictRaces(bests, hrMax);
-    if (!model) {
-      el.predBasis.textContent = "Log a run with distance and time (splits help) to see race predictions.";
-      el.predTable.innerHTML = "";
-      return;
-    }
-    let basis = `Model: <b>${escape(model.method)}</b>, from your runs${escape(windowNote)}. `;
-    if (model.cs) {
-      basis += `Critical speed ${Zones.fmtPace(model.cs.criticalPace)} (sustainable pace), anaerobic reserve D′ ≈ ${Math.round(model.cs.Dp)} m.`;
-    } else {
-      basis += `Single-distance estimate — log efforts at more distances (e.g. a fast 1k and a longer tempo) for the Critical Speed model.`;
-    }
-    if (model.corrected) basis += ` Paces are HR-adjusted up to estimated max-effort.`;
-    el.predBasis.innerHTML = basis;
-    el.predTable.innerHTML =
-      `<tr><th>Distance</th><th>Time</th><th>Pace</th></tr>` +
-      model.predictions.map((p) =>
-        `<tr><td>${p.label}</td><td><b>${Zones.fmtTime(p.sec)}</b></td><td>${Zones.fmtPace(p.pace)}</td></tr>`).join("");
-  }
-
   function refresh() {
     renderHistory();
     renderZones();
-    renderPredictions();
   }
 
   // ---------- sub-mode switch ----------
@@ -280,43 +190,27 @@ const Running = (() => {
     el.add.classList.toggle("hidden", mode !== "add");
     el.progress.classList.toggle("hidden", mode !== "progress");
     el.zones.classList.toggle("hidden", mode !== "zones");
-    el.predict.classList.toggle("hidden", mode !== "predict");
+    el.history.classList.toggle("hidden", mode !== "history");
     if (mode === "progress") Progress.render();
     if (mode === "zones") renderZones();
-    if (mode === "predict") renderPredictions();
+    if (mode === "history") renderHistory();
   }
 
   // ---------- init ----------
   function init() {
     el = {
-      form: document.getElementById("runForm"),
-      date: document.getElementById("rnDate"),
-      title: document.getElementById("rnTitle"),
-      dist: document.getElementById("rnDist"),
-      time: document.getElementById("rnTime"),
-      avgHr: document.getElementById("rnAvgHr"),
-      maxHr: document.getElementById("rnMaxHr"),
-      notes: document.getElementById("rnNotes"),
-      ivList: document.getElementById("ivList"),
-      addIv: document.getElementById("addIv"),
       runList: document.getElementById("runList"),
       runCount: document.getElementById("runCount"),
       emptyRuns: document.getElementById("emptyRuns"),
       add: document.getElementById("runAdd"),
       progress: document.getElementById("runProgress"),
       zones: document.getElementById("runZones"),
-      predict: document.getElementById("runPredict"),
+      history: document.getElementById("runHistory"),
       hrBasis: document.getElementById("hrBasis"),
       hrZoneTable: document.getElementById("hrZoneTable"),
       paceBasis: document.getElementById("paceBasis"),
       paceZoneTable: document.getElementById("paceZoneTable"),
-      predBasis: document.getElementById("predBasis"),
-      predTable: document.getElementById("predTable"),
-      bestTable: document.getElementById("bestTable"),
-      emptyBest: document.getElementById("emptyBest"),
     };
-
-    el.date.value = new Date().toISOString().slice(0, 10);
 
     el.gpxFiles = document.getElementById("gpxFiles");
     el.gpxStatus = document.getElementById("gpxStatus");
@@ -341,43 +235,8 @@ const Running = (() => {
       if (text.includes("<gpx")) { e.preventDefault(); importGpxText(text, "clipboard"); }
     });
 
-    // prediction range chips
-    const predRange = document.getElementById("predRange");
-    RANGES.forEach((r) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "chip" + (r.days === predWindow ? " is-active" : "");
-      b.dataset.days = String(r.days);
-      b.textContent = r.label;
-      b.addEventListener("click", () => { predWindow = r.days; renderPredictions(); });
-      predRange.appendChild(b);
-    });
-    el.addIv.addEventListener("click", () => addIvRow());
-
     document.querySelectorAll("#runModes .seg-btn").forEach((b) =>
       b.addEventListener("click", () => setMode(b.dataset.rmode)));
-
-    el.form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const distanceKm = parseFloat(el.dist.value) || null;
-      const durationSec = Zones.parseTime(el.time.value) || null;
-      if (!distanceKm && !durationSec) { alert("Enter at least a distance or a time."); return; }
-      RunStore.add({
-        date: el.date.value,
-        title: el.title.value.trim(),
-        distanceKm,
-        durationSec,
-        avgHr: parseInt(el.avgHr.value, 10) || null,
-        maxHr: parseInt(el.maxHr.value, 10) || null,
-        intervals: readIntervals(),
-        notes: el.notes.value.trim(),
-      });
-      el.form.reset();
-      el.date.value = new Date().toISOString().slice(0, 10);
-      el.ivList.innerHTML = "";
-      el.gpxStatus.textContent = "Saved ✓ — log another, or check Progress & Predictions.";
-      refresh();
-    });
 
     document.addEventListener("settings-changed", refresh);
     refresh();

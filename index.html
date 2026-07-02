@@ -145,10 +145,10 @@
     <!-- ============ RUN ============ -->
     <section id="tab-run" class="panel">
       <div class="seg" id="runModes">
-        <button class="seg-btn is-active" data-rmode="add">Log a run</button>
+        <button class="seg-btn is-active" data-rmode="add">Import</button>
         <button class="seg-btn" data-rmode="progress">Progress</button>
         <button class="seg-btn" data-rmode="zones">Zones</button>
-        <button class="seg-btn" data-rmode="predict">Predictions</button>
+        <button class="seg-btn" data-rmode="history">History</button>
       </div>
 
       <!-- ---- add a run ---- -->
@@ -165,32 +165,6 @@
           <p class="muted" id="gpxStatus">Drive: drop exports into your GPX folder (name in ⚙ Settings) — checked once a day and on tap. Or copy a GPX file's text and paste it here (⌘V works too).</p>
         </div>
 
-        <form id="runForm" class="card form">
-          <h2>Run details</h2>
-          <label>Date<input type="date" id="rnDate" required></label>
-          <label>Title<input type="text" id="rnTitle" placeholder="e.g. Tempo 5×1k"></label>
-          <div class="row">
-            <label>Distance (km)<input type="number" id="rnDist" step="0.01" min="0" placeholder="0"></label>
-            <label>Time (mm:ss)<input type="text" id="rnTime" placeholder="e.g. 42:30"></label>
-          </div>
-          <div class="row">
-            <label>Avg HR<input type="number" id="rnAvgHr" min="0" placeholder="bpm"></label>
-            <label>Max HR<input type="number" id="rnMaxHr" min="0" placeholder="bpm"></label>
-          </div>
-
-          <div class="intervals">
-            <div class="ex-head"><span>Intervals</span><span class="muted">opt.</span></div>
-            <ul id="ivList" class="iv-list"></ul>
-            <button type="button" class="btn btn-ghost btn-sm" id="addIv">+ Add interval</button>
-          </div>
-
-          <label>Notes<textarea id="rnNotes" rows="2" placeholder="How it felt, route, weather…"></textarea></label>
-          <button type="submit" class="btn btn-primary">Save run</button>
-        </form>
-
-        <div class="history-head"><h2>Run history</h2><span class="muted" id="runCount"></span></div>
-        <ul class="wod-list" id="runList"></ul>
-        <p class="empty" id="emptyRuns">No runs logged yet. Lace up. 🏃</p>
       </div>
 
       <!-- ---- progress ---- -->
@@ -240,21 +214,11 @@
         </div>
       </div>
 
-      <!-- ---- predictions ---- -->
-      <div id="runPredict" class="hidden">
-        <div class="chips chips-range" id="predRange"></div>
-        <div class="card">
-          <h2>Best efforts</h2>
-          <p class="muted">Fastest segment at each distance across your runs (from your splits), with the heart rate on that segment. GPX runs use grade-adjusted pace (Minetti), so hills don't hide fast efforts.</p>
-          <table class="ztable" id="bestTable"></table>
-          <p class="empty" id="emptyBest">Log a run with splits to see your best efforts.</p>
-        </div>
-        <div class="card">
-          <h2>Race predictions</h2>
-          <p class="muted" id="predBasis"></p>
-          <table class="ztable" id="predTable"></table>
-          <p class="muted prev-foot">Estimates from your training data — see the Progress tab for how they develop over time.</p>
-        </div>
+      <!-- ---- history ---- -->
+      <div id="runHistory" class="hidden">
+        <div class="history-head"><h2>Run history</h2><span class="muted" id="runCount"></span></div>
+        <ul class="wod-list" id="runList"></ul>
+        <p class="empty" id="emptyRuns">No runs logged yet. Lace up. 🏃</p>
       </div>
     </section>
 

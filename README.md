@@ -45,8 +45,6 @@ optionally synced across devices via your own Google Drive.
   syncs with your data), so re-selecting or re-syncing everything is always
   safe. iCloud Drive has no web API, so the folder automation is
   Google-Drive-only; the Files picker covers the iCloud path.
-- **Manual logging:** the run form (date, distance, time, HR, intervals,
-  notes) is always available for anything without a GPX file.
 - **HR & pace zones** (Z1–Z5), auto-derived from your runs or profile
   overrides in Settings.
 - **Best efforts:** fastest 1 km / 1 mile / 2 km / 5 km / 10 km / 15 km / Half
@@ -56,8 +54,8 @@ optionally synced across devices via your own Google Drive.
   **HR-adjusted Critical Speed model**: sub-maximal efforts are first scaled
   to estimated max effort from %HRmax (Swain), then a 2-parameter Critical
   Speed fit (with Riegel extrapolation beyond 10 km; Riegel fallback when only
-  one distance is available). A **timeframe picker** (3 mo / 6 mo / 1 yr / all)
-  limits which runs feed the model — current form instead of all-time bests.
+  one distance is available). The current predicted time and its trend live
+  on the Progress view (with a 3 mo / 6 mo / 1 yr / all timeframe picker).
 
 ### Progress (analytics)
 - **Stat tiles:** 4-week distance (with delta vs the prior 4 weeks), runs and
@@ -98,7 +96,7 @@ optionally synced across devices via your own Google Drive.
 | `js/charts.js` | Dependency-free SVG charts (line, bars, stacked bar) |
 | `js/timer.js` | Timer state machine (Tabata / EMOM / AMRAP / For Time) |
 | `js/log.js` | Exercise-based WOD logging + previous-result lookup |
-| `js/running.js` | Run tab: logging, zones, predictions |
+| `js/running.js` | Run tab: GPX import, zones, run history |
 | `js/progress.js` | Progress tab: trends, volume, zone mix, PRs |
 | `js/gdrive.js` | Google Drive sync |
 | `js/app.js` | Tab navigation + wiring |
@@ -107,6 +105,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | **Run tab restructure**: GPX-only import (manual run form removed), run history moved to its own History sub-tab, Predictions view folded into Progress |
 | 2026-07-01 | **Grade-adjusted pace** (Minetti 2002) feeding best efforts & predictions; elevation gain/loss with noise filtering; clipboard paste fixed for copied GPX *files* |
 | 2026-07-01 | **Timeframe picker** (3 mo/6 mo/1 yr/all) for the prediction trend and the prediction model; **paste GPX from clipboard** (button + ⌘V); screenshot/AI upload removed (GPX replaced it) |
 | 2026-07-01 | **GPX import**: file picker (iPhone Files/iCloud) + Google Drive folder pull with daily auto-check; parser with 1-km splits & HR; duplicate detection via GPX start time |

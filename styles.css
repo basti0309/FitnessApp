@@ -171,12 +171,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); bo
 .filelabel:hover { border-color: var(--accent); color: var(--txt); }
 .badge.run { background: #14283a; color: #7fd0ff; }
 
-/* interval rows */
-.intervals { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(0,0,0,.12); }
-.iv-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.iv-row { display: grid; grid-template-columns: 1fr 64px 72px 56px auto; gap: 6px; align-items: center; }
-.iv-row input { padding: 9px 10px; }
-
 /* ---------- zone & prediction tables ---------- */
 .ztable { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .ztable th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: 4px 8px; }
@@ -212,7 +206,6 @@ code { background: var(--bg-elev); padding: 1px 5px; border-radius: 4px; font-si
 .chips-range { margin-top: 2px; }
 .chips-range .chip { padding: 5px 11px; font-size: .76rem; border-color: transparent; }
 .chips-range .chip.is-active { background: var(--bg-card); border-color: var(--line); color: var(--txt); }
-#predRange { margin: 0 0 14px; }
 
 /* ---------- charts ---------- */
 .chart-card h2 { margin-top: 0; }
