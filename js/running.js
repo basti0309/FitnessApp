@@ -23,6 +23,10 @@ const Running = (() => {
       localStorage.setItem(RKEY, JSON.stringify(this.all().filter((r) => r.id !== id)));
       document.dispatchEvent(new Event("data-changed"));
     },
+    update(id, patch) {
+      localStorage.setItem(RKEY, JSON.stringify(this.all().map((r) => (r.id === id ? { ...r, ...patch } : r))));
+      document.dispatchEvent(new Event("data-changed"));
+    },
   };
 
   function escape(s) {
@@ -37,16 +41,31 @@ const Running = (() => {
   // items: [{ name, text }] — parse, skip anything already imported, save.
   function importGpxRuns(items) {
     const existing = RunStore.all();
-    const isDupe = (run) => existing.some((r) =>
+    const findDupe = (run) => existing.find((r) =>
       (r.gpxKey && r.gpxKey === run.gpxKey) ||
       (r.date === run.date &&
         Math.abs((r.distanceKm || 0) - run.distanceKm) < 0.15 &&
         Math.abs((r.durationSec || 0) - run.durationSec) < 10));
-    const out = { added: 0, skipped: 0, failed: [] };
+    const out = { added: 0, skipped: 0, upgraded: 0, failed: [] };
     for (const it of items) {
       try {
         const run = GPX.parse(it.text);
-        if (isDupe(run)) { out.skipped++; continue; }
+        const dupe = findDupe(run);
+        if (dupe) {
+          // same run, but stored before newer analysis existed → backfill the
+          // point-exact bests / GAP / elevation instead of just skipping
+          if (!dupe.bests && run.bests?.length) {
+            RunStore.update(dupe.id, {
+              bests: run.bests,
+              gapDurationSec: run.gapDurationSec,
+              elevGainM: run.elevGainM,
+              elevLossM: run.elevLossM,
+              intervals: dupe.intervals?.length ? dupe.intervals : run.intervals,
+            });
+            out.upgraded++;
+          } else out.skipped++;
+          continue;
+        }
         RunStore.add(run);
         existing.push(run);
         out.added++;
@@ -54,11 +73,12 @@ const Running = (() => {
         out.failed.push(`${it.name}: ${err.message}`);
       }
     }
-    if (out.added) refresh();
+    if (out.added || out.upgraded) refresh();
     return out;
   }
   function gpxSummary(out) {
     const bits = [`${out.added} imported`];
+    if (out.upgraded) bits.push(`${out.upgraded} re-analyzed`);
     if (out.skipped) bits.push(`${out.skipped} already there`);
     if (out.failed.length) bits.push(`${out.failed.length} failed (${out.failed[0]})`);
     return bits.join(" · ");

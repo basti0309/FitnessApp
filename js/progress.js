@@ -226,7 +226,8 @@ const Progress = (() => {
   /* ---------- personal records ---------- */
   function renderPRs() {
     const runs = runsAll();
-    const bests = Zones.bestEfforts(runs);
+    // real times (adjusted:false) — a PR is what you actually ran
+    const bests = Zones.bestEfforts(runs, { adjusted: false });
     el.emptyPr.classList.toggle("hidden", bests.length > 0);
     if (!bests.length) { el.prTable.innerHTML = ""; return; }
     el.prTable.replaceChildren();

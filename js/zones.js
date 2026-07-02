@@ -52,13 +52,13 @@ const Zones = (() => {
   ];
 
   // Turn a run into ordered laps; fall back to one whole-run "lap".
-  // Grade-adjusted (flat-equivalent) times are used when the import computed
-  // them, so hills don't hide fitness from the best-effort/prediction models.
-  function lapsOf(run) {
+  // With adjusted=true, grade-adjusted (flat-equivalent) times are used when
+  // the import computed them — for the prediction models. PRs use real times.
+  function lapsOf(run, adjusted = true) {
     const ivs = (run.intervals || []).filter((i) => i.distanceKm > 0 && i.durationSec > 0);
-    if (ivs.length) return ivs.map((i) => ({ d: i.distanceKm, t: i.gapDurationSec || i.durationSec, h: i.avgHr || null }));
+    if (ivs.length) return ivs.map((i) => ({ d: i.distanceKm, t: (adjusted && i.gapDurationSec) || i.durationSec, h: i.avgHr || null }));
     if (run.distanceKm > 0 && run.durationSec > 0)
-      return [{ d: run.distanceKm, t: run.gapDurationSec || run.durationSec, h: run.avgHr || null }];
+      return [{ d: run.distanceKm, t: (adjusted && run.gapDurationSec) || run.durationSec, h: run.avgHr || null }];
     return [];
   }
 
@@ -88,19 +88,26 @@ const Zones = (() => {
   // Returns [{label, km, sec, pace, hr, run}], only distances the data supports.
   // whole-run normalized to a target distance (so sparse/partial splits don't
   // hide the overall effort)
-  function wholeSeg(run, target) {
-    const t = run.gapDurationSec || run.durationSec;
+  function wholeSeg(run, target, adjusted = true) {
+    const t = (adjusted && run.gapDurationSec) || run.durationSec;
     if (run.distanceKm >= target - 1e-6 && t > 0)
       return { sec: t * (target / run.distanceKm), hr: run.avgHr || null };
     return null;
   }
 
-  function bestEfforts(runs) {
+  // opts.adjusted=false → real times (PRs); default true → grade-adjusted
+  // (prediction input). Runs imported from GPX carry exact point-level bests
+  // (run.bests) — preferred over the km-split window approximation.
+  function bestEfforts(runs, opts = {}) {
+    const adjusted = opts.adjusted !== false;
     const out = [];
     for (const tgt of SEG_TARGETS) {
       let best = null;
       for (const run of runs) {
-        const candidates = [fastestForTarget(lapsOf(run), tgt.km), wholeSeg(run, tgt.km)].filter(Boolean);
+        const stored = (run.bests || []).find((b) => Math.abs(b.km - tgt.km) < 0.01);
+        const candidates = stored
+          ? [{ sec: (adjusted && stored.gapSec) || stored.sec, hr: stored.hr }]
+          : [fastestForTarget(lapsOf(run, adjusted), tgt.km), wholeSeg(run, tgt.km, adjusted)].filter(Boolean);
         for (const seg of candidates) {
           if (!best || seg.sec < best.sec) {
             best = { label: tgt.label, km: tgt.km, sec: seg.sec, pace: seg.sec / tgt.km, hr: seg.hr, run };
