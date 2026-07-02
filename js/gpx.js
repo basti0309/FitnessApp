@@ -9,10 +9,22 @@
    same metabolic rate is v·C(i)/C(0), so each leg's flat-equivalent time is
    t·C(0)/C(i). Elevation is smoothed first to keep GPS noise out of i.
 
+   Optical wrist-HR sensors often misread at the start of a run (a false spike,
+   then — after a stop — a slow settle) before locking onto the true signal.
+   cleanHR() detects that early "warm-up" window from the HR↔effort coupling
+   and reconstructs it, so avg/max HR, per-split HR, zones, effort labels and
+   the predictions all use trustworthy HR. Raw values are kept alongside.
+
    The GPX start timestamp becomes `gpxKey`, the duplicate guard: a file that
    was already imported (on any synced device) is recognized and skipped. */
 const GPX = (() => {
   const PAUSE_GAP = 20;   // seconds between points beyond which the watch was paused
+
+  function median(arr) {
+    if (!arr.length) return NaN;
+    const s = [...arr].sort((x, y) => x - y), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
 
   // Minetti 2002 cost of running, gradient clamped to the validated range
   function minettiC(i) {
@@ -85,7 +97,7 @@ const GPX = (() => {
       if (dt <= 0) { cum[i] = cum[i - 1]; continue; }
       if (dt > PAUSE_GAP) { dt = 0; d = 0; }   // paused — no time, no distance
       cum[i] = cum[i - 1] + d;
-      legs.push({ d, dt, hr: b.hr ?? a.hr, a: i - 1, b: i });
+      legs.push({ d, dt, a: i - 1, b: i });    // hr filled after HR cleaning
     }
 
     // Barometer/GPS elevation wobbles ±1–2 m constantly; fed raw into the
@@ -126,6 +138,10 @@ const GPX = (() => {
       return (eleAt(mid + GRADE_WIN) - eleAt(mid - GRADE_WIN)) / (2 * GRADE_WIN);
     }
 
+    // ---- HR cleaning: detect & reconstruct the early optical-sensor artifact ----
+    // Sets pts[i].hrUse on every point. Returns fix info (or null if untouched).
+    const hrFix = cleanHR(pts, cum, gradeAt);
+
     // pass 2: totals + 1-km splits (with flat-equivalent GAP time per leg)
     let dist = 0, moving = 0, gapTotal = 0, hrSum = 0, hrTime = 0, maxHr = 0;
     const intervals = [];
@@ -144,7 +160,9 @@ const GPX = (() => {
     }
 
     for (const leg of legs) {
-      const { d, dt, hr } = leg;
+      const { d, dt } = leg;
+      const hr = pts[leg.b].hrUse ?? pts[leg.a].hrUse;   // cleaned HR
+      leg.hr = hr;                                        // for the best-effort sweep
       if (hr && dt) { hrSum += hr * dt; hrTime += dt; maxHr = Math.max(maxHr, hr); }
 
       let gapT = dt;
@@ -233,10 +251,145 @@ const GPX = (() => {
       elevLossM: hasEle ? Math.round(loss) : null,
       avgHr: hrTime ? Math.round(hrSum / hrTime) : null,
       maxHr: maxHr || null,
+      rawAvgHr: hrFix ? hrFix.rawAvg : null,
+      rawMaxHr: hrFix ? hrFix.rawMax : null,
+      hrFix: hrFix ? { corrected: true, windowSec: hrFix.windowSec } : null,
+      series: buildSeries(pts, cum),
       intervals,
       bests,
       notes: "",
     };
+  }
+
+  // Downsampled time series for the run-detail profile charts: ~180 samples of
+  // { t(s), pace(sec/km), hr(corrected), hrRaw }. Pace is smoothed over ±12 s
+  // and null during pauses. Kept small so it syncs cheaply via Drive.
+  function buildSeries(pts, cum) {
+    const n = pts.length;
+    if (n < 4) return null;
+    const t0 = pts[0].time;
+    const s = (i) => (pts[i].time - t0) / 1000;
+    const TARGET = 180, stride = Math.max(1, Math.floor(n / TARGET));
+    const t = [], pace = [], hr = [], hrRaw = [];
+    let hasHR = false, hasFix = false;
+    for (let i = 0; i < n; i += stride) {
+      // smoothed pace from a ±12 s window (cum excludes paused distance)
+      let lo = i, hi = i;
+      while (lo > 0 && s(i) - s(lo) < 12) lo--;
+      while (hi < n - 1 && s(hi) - s(i) < 12) hi++;
+      const dd = cum[hi] - cum[lo], dts = s(hi) - s(lo);
+      const v = dts > 0 ? dd / dts : 0;
+      const p = v > 0.6 ? Math.round(1000 / v) : null;     // sec/km, null when stopped
+      t.push(Math.round(s(i)));
+      pace.push(p != null ? Math.max(120, Math.min(1200, p)) : null);
+      const hc = pts[i].hrUse, hraw = pts[i].hr;
+      hr.push(isFinite(hc) ? Math.round(hc) : null);
+      hrRaw.push(isFinite(hraw) ? Math.round(hraw) : null);
+      if (isFinite(hraw)) hasHR = true;
+      if (isFinite(hc) && isFinite(hraw) && Math.round(hc) !== Math.round(hraw)) hasFix = true;
+    }
+    if (!hasHR && pace.every((x) => x == null)) return null;
+    return { t, pace, hr, hrRaw: hasFix ? hrRaw : null };
+  }
+
+  // Detect the early optical-HR "warm-up" artifact and reconstruct it.
+  // The wrist sensor decouples from effort at the start (a false spike, then —
+  // often after a stop — a slow settle) before locking on. We learn the runner's
+  // HR↔effort relationship from the settled part of THIS run, flag the initial
+  // window where measured HR departs from it (in either direction), and rebuild
+  // that window from the effort model plus a physiological onset ramp. Isolated
+  // spikes anywhere else are removed with a Hampel (median/MAD) filter.
+  // Sets pts[i].hrUse; returns { windowSec, rawAvg, rawMax } or null.
+  function cleanHR(pts, cum, gradeAt) {
+    pts.forEach((p) => { p.hrUse = p.hr; });
+    const withHR = pts.filter((p) => isFinite(p.hr) && p.hr > 40);
+    if (withHR.length < 30) return null;
+    const t0 = pts[0].time;
+    const T = (pts[pts.length - 1].time - t0) / 1000;
+
+    // per-point second, speed (from neighbours), grade → flat-equivalent effort
+    for (let i = 0; i < pts.length; i++) {
+      const lo = Math.max(0, i - 1), hi = Math.min(pts.length - 1, i + 1);
+      const dts = (pts[hi].time - pts[lo].time) / 1000;
+      const v = dts > 0 ? (cum[hi] - cum[lo]) / dts : 0;
+      pts[i].s = (pts[i].time - t0) / 1000;
+      pts[i].moving = v > 0.6;
+      pts[i].gapV = v > 0 ? v * (minettiC(gradeAt(cum[i])) / C0) : 0;
+    }
+
+    // 1) Hampel despike on the raw series → hrH
+    const K = 7;
+    for (let i = 0; i < pts.length; i++) {
+      if (!isFinite(pts[i].hr)) { pts[i].hrH = pts[i].hr; continue; }
+      const win = [];
+      for (let k = Math.max(0, i - K); k <= Math.min(pts.length - 1, i + K); k++)
+        if (isFinite(pts[k].hr)) win.push(pts[k].hr);
+      const med = median(win);
+      const mad = 1.4826 * median(win.map((x) => Math.abs(x - med)));
+      pts[i].hrH = (mad > 0 && Math.abs(pts[i].hr - med) > 3 * mad) ? med : pts[i].hr;
+    }
+
+    // 2) robust effort model  HR ≈ a + b·gapV  over moving points
+    const mv = pts.filter((p) => p.moving && isFinite(p.hrH));
+    if (mv.length < 20) return null;
+    function fit(arr) {
+      let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+      for (const p of arr) { n++; sx += p.gapV; sy += p.hrH; sxx += p.gapV * p.gapV; sxy += p.gapV * p.hrH; }
+      const den = n * sxx - sx * sx;
+      const b = Math.abs(den) < 1e-6 ? 0 : (n * sxy - sx * sy) / den;
+      return { a: (sy - b * sx) / n, b };
+    }
+    let { a, b } = fit(mv);
+    for (let it = 0; it < 2; it++) {
+      const kept = mv.filter((p) => Math.abs(p.hrH - (a + b * p.gapV)) < 15);
+      if (kept.length > 10) ({ a, b } = fit(kept));
+    }
+    if (!isFinite(b) || b < 0) b = 0;
+    b = Math.min(b, 3);
+    if (b === 0) a = median(mv.map((p) => p.hrH));   // steady run: flat baseline
+    const expected = (p) => a + b * p.gapV;
+
+    // 3) smoothed residual (±15 s, moving) → warm-up lock-in point
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (!p.moving || !isFinite(p.hrH)) { p.rRes = 0; continue; }
+      let s = 0, n = 0;
+      for (let k = i; k >= 0 && p.s - pts[k].s <= 15; k--)
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - expected(pts[k]); n++; }
+      for (let k = i + 1; k < pts.length && pts[k].s - p.s <= 15; k++)
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - expected(pts[k]); n++; }
+      p.rRes = n ? s / n : 0;
+    }
+    // lock-in = start of the first ≥120 s stretch where HR stays within ±6 bpm
+    // of effort (moving pts; pauses bridged). Only correct if the window before
+    // it truly decoupled (>12 bpm) and isn't implausibly long (≤60 % of run).
+    const SETTLE = 6, SETTLE_DUR = 120, DECOUPLE = 12, MAXFRAC = 0.6;
+    let streak = null, lock = null;
+    for (const p of pts) {
+      if (!p.moving || !isFinite(p.hrH)) continue;
+      if (Math.abs(p.rRes) <= SETTLE) {
+        if (streak == null) streak = p.s;
+        if (p.s - streak >= SETTLE_DUR) { lock = streak; break; }
+      } else streak = null;
+    }
+    if (lock == null) lock = 0;
+    const decoupled = pts.some((p) => p.moving && p.s < lock && Math.abs(p.rRes) > DECOUPLE);
+    if (!decoupled || lock <= 0 || lock > T * MAXFRAC) return null;
+
+    const rawMax = Math.max(...withHR.map((p) => p.hr));
+    const movHR = pts.filter((p) => p.moving && isFinite(p.hr));
+    const rawAvg = Math.round(movHR.reduce((s, p) => s + p.hr, 0) / movHR.length);
+
+    // 4) reconstruct [0, lock): effort-consistent target + onset ramp
+    const startHR = Math.max(70, Math.round(expected(mv[0]) - 30));
+    const TAU = 45, ONSET = 150;
+    for (const p of pts) {
+      if (p.s >= lock) { p.hrUse = p.hrH; continue; }   // keep despiked reliable HR
+      let e = expected(p);
+      if (p.s < ONSET) e = startHR + (e - startHR) * (1 - Math.exp(-p.s / TAU));
+      p.hrUse = Math.round(Math.max(40, Math.min(210, e)));
+    }
+    return { windowSec: Math.round(lock), rawAvg, rawMax };
   }
 
   return { parse };

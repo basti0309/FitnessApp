@@ -53,14 +53,20 @@ const Running = (() => {
         const dupe = findDupe(run);
         if (dupe) {
           // same run, but stored before newer analysis existed → backfill the
-          // point-exact bests / GAP / elevation instead of just skipping
-          if (!dupe.bests && run.bests?.length) {
+          // point-exact bests / GAP / elevation / HR-cleaning instead of skipping
+          const needsBests = !dupe.bests && run.bests?.length;
+          const needsHrFix = run.hrFix && dupe.hrFix === undefined;
+          const needsSeries = run.series && !dupe.series;
+          if (needsBests || needsHrFix || needsSeries) {
             RunStore.update(dupe.id, {
               bests: run.bests,
               gapDurationSec: run.gapDurationSec,
               elevGainM: run.elevGainM,
               elevLossM: run.elevLossM,
-              intervals: dupe.intervals?.length ? dupe.intervals : run.intervals,
+              avgHr: run.avgHr, maxHr: run.maxHr,
+              rawAvgHr: run.rawAvgHr, rawMaxHr: run.rawMaxHr, hrFix: run.hrFix,
+              series: run.series,
+              intervals: run.intervals?.length ? run.intervals : dupe.intervals,
             });
             out.upgraded++;
           } else out.skipped++;
@@ -155,13 +161,14 @@ const Running = (() => {
         ? ` · GAP ${Zones.fmtPace(r.gapDurationSec / r.distanceKm)}` : "";
       const elev = r.elevGainM != null ? ` · ↑${r.elevGainM} m` : "";
       return `
-        <li class="wod-item">
+        <li class="wod-item" data-id="${r.id}">
           <div class="wod-main">
             <div class="wod-top">
               <span class="badge run">RUN</span>
               <span class="wod-name">${escape(r.title || "Run")}</span>
             </div>
             <div class="wod-ex">${r.distanceKm ?? "—"} km · ${Zones.fmtTime(r.durationSec)} · ${pace}${gap}${elev}${r.avgHr ? " · " + r.avgHr + " bpm" : ""}</div>
+            ${r.hrFix?.corrected ? `<div class="wod-meta hr-fixed">⚠ HR-Start korrigiert (0:00–${Zones.fmtTime(r.hrFix.windowSec)})${r.rawMaxHr ? ` · roh ${r.rawAvgHr}/${r.rawMaxHr} bpm` : ""}</div>` : ""}
             ${r.intervals?.length ? `<div class="wod-meta">${r.intervals.length} intervals</div>` : ""}
             <div class="wod-meta">${fmtDate(r.date)}</div>
             ${r.notes ? `<div class="wod-notes">${escape(r.notes)}</div>` : ""}
@@ -170,9 +177,61 @@ const Running = (() => {
         </li>`;
     }).join("");
     el.runList.querySelectorAll(".del-btn").forEach((b) =>
-      b.addEventListener("click", () => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (confirm("Delete this run?")) { RunStore.remove(b.dataset.id); refresh(); }
       }));
+    el.runList.querySelectorAll(".wod-item").forEach((li) =>
+      li.addEventListener("click", () => openDetail(li.dataset.id)));
+  }
+
+  // ---------- run detail: pace + HR profiles ----------
+  let detailRun = null, hrMode = "corrected";
+  function openDetail(id) {
+    const run = RunStore.all().find((r) => r.id === id);
+    if (!run) return;
+    detailRun = run;
+    hrMode = "corrected";
+    el.rdTitle.textContent = run.title || "Run";
+    const pace = run.distanceKm && run.durationSec ? Zones.fmtPace(run.durationSec / run.distanceKm) : "—";
+    el.rdSub.textContent = `${fmtDate(run.date)} · ${run.distanceKm ?? "—"} km · ${Zones.fmtTime(run.durationSec)} · ${pace}`;
+    const hasFix = !!(run.hrFix?.corrected && run.series?.hrRaw);
+    el.rdHrToggle.hidden = !hasFix;
+    el.rdHrToggle.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.hr === "corrected"));
+    el.rdHrHint.textContent = hasFix
+      ? `HR-Start korrigiert (0:00–${Zones.fmtTime(run.hrFix.windowSec)}). Umschalten für die Originalkurve.`
+      : "";
+    el.runDetail.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    // charts need a layout pass to read their width
+    requestAnimationFrame(renderDetailCharts);
+  }
+  function closeDetail() {
+    el.runDetail.classList.add("hidden");
+    document.body.style.overflow = "";
+    detailRun = null;
+  }
+  function renderDetailCharts() {
+    const run = detailRun;
+    if (!run) return;
+    const sr = run.series;
+    if (!sr) {
+      el.rdPace.innerHTML = `<p class="empty">Profil erst nach Neu-Import dieses Laufs verfügbar.</p>`;
+      el.rdHr.innerHTML = "";
+      el.rdPaceHint.textContent = "";
+      return;
+    }
+    const xMax = sr.t[sr.t.length - 1] || 1;
+    el.rdPaceHint.textContent = "";
+    Charts.area(el.rdPace, {
+      points: sr.t.map((x, i) => ({ x, y: sr.pace[i] })),
+      color: "#3987e5", yKind: "pace", seriesName: "Tempo", xMax,
+    });
+    const hrArr = hrMode === "raw" && sr.hrRaw ? sr.hrRaw : sr.hr;
+    Charts.area(el.rdHr, {
+      points: sr.t.map((x, i) => ({ x, y: hrArr[i] })),
+      color: "#e34948", yKind: "hr", seriesName: "Puls", xMax,
+    });
   }
 
   function renderZones() {
@@ -230,7 +289,26 @@ const Running = (() => {
       hrZoneTable: document.getElementById("hrZoneTable"),
       paceBasis: document.getElementById("paceBasis"),
       paceZoneTable: document.getElementById("paceZoneTable"),
+      runDetail: document.getElementById("runDetail"),
+      rdTitle: document.getElementById("rdTitle"),
+      rdSub: document.getElementById("rdSub"),
+      rdClose: document.getElementById("rdClose"),
+      rdHrToggle: document.getElementById("rdHrToggle"),
+      rdHrHint: document.getElementById("rdHrHint"),
+      rdPaceHint: document.getElementById("rdPaceHint"),
+      rdPace: document.getElementById("rdPace"),
+      rdHr: document.getElementById("rdHr"),
     };
+
+    el.rdClose.addEventListener("click", closeDetail);
+    el.runDetail.addEventListener("click", (e) => { if (e.target === el.runDetail) closeDetail(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !el.runDetail.classList.contains("hidden")) closeDetail(); });
+    el.rdHrToggle.querySelectorAll(".seg-btn").forEach((b) =>
+      b.addEventListener("click", () => {
+        hrMode = b.dataset.hr;
+        el.rdHrToggle.querySelectorAll(".seg-btn").forEach((x) => x.classList.toggle("is-active", x === b));
+        renderDetailCharts();
+      }));
 
     el.gpxFiles = document.getElementById("gpxFiles");
     el.gpxStatus = document.getElementById("gpxStatus");
