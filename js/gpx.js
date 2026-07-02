@@ -26,6 +26,54 @@ const GPX = (() => {
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   }
 
+  // Gauss-Jordan for small systems (normalized pivot rows); null if singular.
+  function solve(A, B) {
+    const n = B.length, M = A.map((r, i) => [...r, B[i]]);
+    for (let col = 0; col < n; col++) {
+      let piv = col;
+      for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+      if (Math.abs(M[piv][col]) < 1e-12) return null;
+      [M[col], M[piv]] = [M[piv], M[col]];
+      const pv = M[col][col];
+      for (let k = col; k <= n; k++) M[col][k] /= pv;      // normalize pivot row → diagonal 1
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const f = M[r][col];
+        for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k];
+      }
+    }
+    return M.map((r) => r[n]);
+  }
+  // Fit HR = a + b·gapV (+ c·minutes when drift), robust to collinearity: on a
+  // steady run gapV barely varies, so the full system is near-singular — we try
+  // the full model, then drop terms until it solves, and always return a model.
+  const HR_TERM = { a: () => 1, b: (p) => p.gapV, c: (p) => p.s / 60 };
+  function fitHRModel(arr, drift) {
+    if (arr.length < 3) return null;
+    const specs = drift ? [["a", "b", "c"], ["a", "c"], ["a", "b"], ["a"]] : [["a", "b"], ["a"]];
+    const build = (data, keys) => {
+      const dim = keys.length;
+      const A = Array.from({ length: dim }, () => Array(dim).fill(0)), B = Array(dim).fill(0);
+      for (const p of data) {
+        const x = keys.map((k) => HR_TERM[k](p));
+        for (let i = 0; i < dim; i++) { B[i] += x[i] * p.hrH; for (let j = 0; j < dim; j++) A[i][j] += x[i] * x[j]; }
+      }
+      const co = solve(A, B);
+      if (!co || co.some((x) => !isFinite(x))) return null;   // reject ill-conditioned
+      const m = { a: 0, b: 0, c: 0, _keys: keys };
+      keys.forEach((k, i) => { m[k] = co[i]; });
+      return m;
+    };
+    let m = null, keys = null;
+    for (const sp of specs) { m = build(arr, sp); if (m) { keys = sp; break; } }
+    if (!m) return { a: median(arr.map((p) => p.hrH)), b: 0, c: 0 };
+    for (let it = 0; it < 2; it++) {
+      const kept = arr.filter((p) => Math.abs(p.hrH - (m.a + m.b * p.gapV + m.c * (p.s / 60))) < 15);
+      if (kept.length > Math.max(10, arr.length * 0.5)) { const mm = build(kept, keys); if (mm) m = mm; }
+    }
+    return m;
+  }
+
   // Minetti 2002 cost of running, gradient clamped to the validated range
   function minettiC(i) {
     i = Math.max(-0.35, Math.min(0.35, i));
@@ -329,40 +377,33 @@ const GPX = (() => {
       pts[i].hrH = (mad > 0 && Math.abs(pts[i].hr - med) > 3 * mad) ? med : pts[i].hr;
     }
 
-    // 2) robust effort model  HR ≈ a + b·gapV  over moving points
+    // 2) reference model  HR ≈ a + b·gapV + c·min  fit on the RELIABLE TAIL
+    // only (last 45 % of the run — past any start-up artifact by construction),
+    // then extrapolated backwards. The drift term (c) matters: at a steady pace
+    // HR still climbs over a run, so a flat baseline would misread that climb.
     const mv = pts.filter((p) => p.moving && isFinite(p.hrH));
     if (mv.length < 20) return null;
-    function fit(arr) {
-      let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
-      for (const p of arr) { n++; sx += p.gapV; sy += p.hrH; sxx += p.gapV * p.gapV; sxy += p.gapV * p.hrH; }
-      const den = n * sxx - sx * sx;
-      const b = Math.abs(den) < 1e-6 ? 0 : (n * sxy - sx * sy) / den;
-      return { a: (sy - b * sx) / n, b };
-    }
-    let { a, b } = fit(mv);
-    for (let it = 0; it < 2; it++) {
-      const kept = mv.filter((p) => Math.abs(p.hrH - (a + b * p.gapV)) < 15);
-      if (kept.length > 10) ({ a, b } = fit(kept));
-    }
-    if (!isFinite(b) || b < 0) b = 0;
-    b = Math.min(b, 3);
-    if (b === 0) a = median(mv.map((p) => p.hrH));   // steady run: flat baseline
-    const expected = (p) => a + b * p.gapV;
+    const tailStart = T * 0.55;
+    let tail = mv.filter((p) => p.s >= tailStart);
+    if (tail.length < 20) tail = mv;
+    let rm = fitHRModel(tail, true);
+    if (!rm) return null;
+    rm.c = Math.max(0, Math.min(1.2, rm.c));            // drift 0…1.2 bpm/min (early ≤ later)
+    const evalM = (m, p) => m.a + m.b * p.gapV + m.c * (p.s / 60);
 
-    // 3) smoothed residual (±15 s, moving) → warm-up lock-in point
+    // smoothed residual vs the reference (±15 s, moving)
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
       if (!p.moving || !isFinite(p.hrH)) { p.rRes = 0; continue; }
       let s = 0, n = 0;
       for (let k = i; k >= 0 && p.s - pts[k].s <= 15; k--)
-        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - expected(pts[k]); n++; }
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
       for (let k = i + 1; k < pts.length && pts[k].s - p.s <= 15; k++)
-        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - expected(pts[k]); n++; }
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
       p.rRes = n ? s / n : 0;
     }
-    // lock-in = start of the first ≥120 s stretch where HR stays within ±6 bpm
-    // of effort (moving pts; pauses bridged). Only correct if the window before
-    // it truly decoupled (>12 bpm) and isn't implausibly long (≤60 % of run).
+    // lock-in = start of the first ≥120 s stretch where HR tracks the reference
+    // within ±6 bpm (moving pts; pauses bridged).
     const SETTLE = 6, SETTLE_DUR = 120, DECOUPLE = 12, MAXFRAC = 0.6;
     let streak = null, lock = null;
     for (const p of pts) {
@@ -373,21 +414,27 @@ const GPX = (() => {
       } else streak = null;
     }
     if (lock == null) lock = 0;
-    const decoupled = pts.some((p) => p.moving && p.s < lock && Math.abs(p.rRes) > DECOUPLE);
-    if (!decoupled || lock <= 0 || lock > T * MAXFRAC) return null;
+    // trigger only for a real optical artifact: the window must contain a
+    // sustained HR-too-HIGH excursion (a spike/plateau the sensor invents),
+    // not merely the natural low HR of the first minute.
+    const artifact = pts.some((p) => p.moving && p.s < lock && p.rRes > DECOUPLE);
+    if (!artifact || lock <= 0 || lock > T * MAXFRAC) return null;
 
     const rawMax = Math.max(...withHR.map((p) => p.hr));
     const movHR = pts.filter((p) => p.moving && isFinite(p.hr));
     const rawAvg = Math.round(movHR.reduce((s, p) => s + p.hr, 0) / movHR.length);
 
-    // 4) reconstruct [0, lock): effort-consistent target + onset ramp
-    const startHR = Math.max(70, Math.round(expected(mv[0]) - 30));
-    const TAU = 45, ONSET = 150;
+    // 3) reconstruct [0, lock): drift+effort model, capped at the settled entry,
+    // with a physiological onset ramp over the first 60 s.
+    const nearLock = pts.filter((p) => p.moving && isFinite(p.hrH) && p.s >= lock && p.s < lock + 180).map((p) => p.hrH);
+    const Hlock = nearLock.length ? median(nearLock) : evalM(rm, { gapV: rm.b ? median(tail.map((p) => p.gapV)) : 0, s: lock });
+    const startFloor = Math.max(80, Math.round(Hlock - 32));
+    const TAU = 30, ONSET = 60;
     for (const p of pts) {
       if (p.s >= lock) { p.hrUse = p.hrH; continue; }   // keep despiked reliable HR
-      let e = expected(p);
-      if (p.s < ONSET) e = startHR + (e - startHR) * (1 - Math.exp(-p.s / TAU));
-      p.hrUse = Math.round(Math.max(40, Math.min(210, e)));
+      let e = Math.min(evalM(rm, p), Hlock + 3);         // never above the settled entry
+      if (p.s < ONSET) e = startFloor + (e - startFloor) * (1 - Math.exp(-p.s / TAU));
+      p.hrUse = Math.round(Math.max(40, Math.min(210, Math.max(startFloor - 5, e))));
     }
     return { windowSec: Math.round(lock), rawAvg, rawMax };
   }

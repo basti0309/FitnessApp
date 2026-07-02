@@ -51,8 +51,12 @@ optionally synced across devices via your own Google Drive.
   of the run, detects the initial decoupled window (both too-high and too-low,
   bridging real pauses), and reconstructs it from the effort model plus a
   physiological onset ramp (τ≈45 s); isolated spikes elsewhere are removed with a
-  Hampel filter. All HR-based figures (avg/max, splits, zones, effort labels,
-  predictions, max-HR derivation) use the cleaned signal; raw values are kept.
+  Hampel filter. The reconstruction uses an HR↔effort model **fit on the
+  reliable tail of the run** (with a cardiac-drift term) and extrapolated back,
+  so the rebuilt warm-up rises realistically toward the settled HR instead of
+  sitting at a flat average. All HR-based figures (avg/max, splits, zones,
+  effort labels, predictions, max-HR derivation) use the cleaned signal; raw
+  values are kept.
 - **Run detail (tap a run in History):** Zepp-style **pace and HR profile**
   charts (filled area, crosshair tooltip), with a **toggle between the corrected
   and the original HR curve** when a correction was applied.
@@ -128,6 +132,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | HR reconstruction improved: reference model fit on the reliable run tail + cardiac-drift term (rebuilds a realistic rising warm-up, not a flat average); fixed the linear solver |
 | 2026-07-02 | **HR artifact correction** (Variant B): detect the early optical-sensor warm-up window from HR↔effort decoupling (pause-aware) and reconstruct it (effort model + onset ramp) + Hampel despike; feeds all HR calculations, raw kept. **Run-detail pace/HR profile charts** with corrected↔original HR toggle |
 | 2026-07-02 | **Recency-weighted predictions**: best efforts feeding the race predictions fade with a 42-day fitness half-life (Banister / TrainingPeaks CTL), bounded ≤12% (detraining data); PRs stay all-time; no re-import needed |
 | 2026-07-02 | **Point-exact personal records**: best efforts computed from raw GPX track points (sliding window, not km-split-aligned), real times for PRs vs GAP for predictions, duplicate imports backfill the new analysis |
