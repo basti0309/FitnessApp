@@ -151,6 +151,7 @@ const GPX = (() => {
       if (hasEle && dt > 0 && d > 0.5) {
         gapT = dt * C0 / minettiC(gradeAt((cum[leg.a] + cum[leg.b]) / 2));
       }
+      leg.gapT = gapT;
 
       // walk this leg, splitting at every 1-km boundary (interpolated)
       let legD = d, legT = dt, legG = gapT;
@@ -168,6 +169,58 @@ const GPX = (() => {
     }
     if (seg.dist > 150) closeSplit(seg.dist / 1000);   // final partial split
 
+    // exact best efforts from the raw points (not km-split-aligned): a fast
+    // 5k starting anywhere inside the run is found by a sliding window over
+    // cumulative distance/time. Real time for PRs, GAP time for predictions.
+    const cumT = new Array(pts.length).fill(0);   // moving seconds
+    const cumG = new Array(pts.length).fill(0);   // grade-adjusted seconds
+    const cumH = new Array(pts.length).fill(0);   // Σ hr·dt
+    const cumHT = new Array(pts.length).fill(0);  // Σ dt with hr
+    {
+      let li = 0;
+      for (let i = 1; i < pts.length; i++) {
+        cumT[i] = cumT[i - 1]; cumG[i] = cumG[i - 1];
+        cumH[i] = cumH[i - 1]; cumHT[i] = cumHT[i - 1];
+        if (li < legs.length && legs[li].b === i) {
+          const lg = legs[li++];
+          cumT[i] += lg.dt; cumG[i] += lg.gapT ?? lg.dt;
+          if (lg.hr && lg.dt) { cumH[i] += lg.hr * lg.dt; cumHT[i] += lg.dt; }
+        }
+      }
+    }
+    const BEST_TARGETS = [
+      { label: "1 km", m: 1000 }, { label: "1 mile", m: 1609.344 },
+      { label: "2 km", m: 2000 }, { label: "5 km", m: 5000 },
+      { label: "10 km", m: 10000 }, { label: "15 km", m: 15000 },
+      { label: "Half", m: 21097.5 },
+    ];
+    const bests = [];
+    const N = pts.length - 1;
+    for (const tgt of BEST_TARGETS) {
+      if (cum[N] < tgt.m) break;
+      let best = null, i = 0;
+      for (let j = 1; j <= N; j++) {
+        while (cum[j] - cum[i + 1] >= tgt.m) i++;   // tightest window ≥ target
+        const d = cum[j] - cum[i];
+        if (d < tgt.m) continue;
+        const t = (cumT[j] - cumT[i]) * (tgt.m / d); // normalize to exact target
+        if (t > 0 && (!best || t < best.sec)) {
+          const hrT = cumHT[j] - cumHT[i];
+          best = {
+            sec: t,
+            gapSec: (cumG[j] - cumG[i]) * (tgt.m / d),
+            hr: hrT > 0 ? (cumH[j] - cumH[i]) / hrT : null,
+          };
+        }
+      }
+      if (best) bests.push({
+        label: tgt.label, km: tgt.m / 1000,
+        sec: Math.round(best.sec),
+        gapSec: hasEle ? Math.round(best.gapSec) : null,
+        hr: best.hr ? Math.round(best.hr) : null,
+      });
+    }
+
     if (dist < 100 || moving < 30) throw new Error("Track too short to import.");
     return {
       gpxKey: start.toISOString().slice(0, 19),
@@ -181,6 +234,7 @@ const GPX = (() => {
       avgHr: hrTime ? Math.round(hrSum / hrTime) : null,
       maxHr: maxHr || null,
       intervals,
+      bests,
       notes: "",
     };
   }

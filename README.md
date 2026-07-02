@@ -68,8 +68,12 @@ optionally synced across devices via your own Google Drive.
 - **Weekly distance** *(chart)*: km per week over the last 12 weeks.
 - **Time in HR zones** *(chart)*: intensity mix of the last 4 weeks from your
   splits' heart rates (stacked bar + legend).
-- **Personal records:** fastest effort per distance with the date it was set;
-  PRs from the last 4 weeks get a **NEW** badge.
+- **Personal records:** fastest segment *anywhere inside* a run (a fast 5k in
+  the middle of a longer run counts) — computed point-exactly from the raw
+  GPX track at import, with the date it was set; PRs from the last 4 weeks
+  get a **NEW** badge. PRs show real times; the prediction models keep using
+  grade-adjusted times. Re-importing an old GPX backfills the exact analysis
+  ("re-analyzed") instead of skipping it.
 - All charts are hand-rolled SVG (no chart library): hover crosshair/tooltips,
   keyboard navigation on the trend line, and a "View as table" twin under
   every chart so no value is hover- or color-gated.
@@ -105,6 +109,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | **Point-exact personal records**: best efforts computed from raw GPX track points (sliding window, not km-split-aligned), real times for PRs vs GAP for predictions, duplicate imports backfill the new analysis |
 | 2026-07-02 | **Run tab restructure**: GPX-only import (manual run form removed), run history moved to its own History sub-tab, Predictions view folded into Progress |
 | 2026-07-01 | **Grade-adjusted pace** (Minetti 2002) feeding best efforts & predictions; elevation gain/loss with noise filtering; clipboard paste fixed for copied GPX *files* |
 | 2026-07-01 | **Timeframe picker** (3 mo/6 mo/1 yr/all) for the prediction trend and the prediction model; **paste GPX from clipboard** (button + ⌘V); screenshot/AI upload removed (GPX replaced it) |
