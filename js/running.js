@@ -184,7 +184,7 @@ const Running = (() => {
       Zones.hrZones(hrMax).map((z) =>
         `<tr><td><b>${z.z}</b></td><td>${z.name}</td><td>${z.lo}–${z.hi}</td></tr>`).join("");
 
-    const bests = Zones.bestEfforts(runs);
+    const bests = Zones.bestEfforts(runs, { recency: true });
     const thr = deriveThresholdPace(Zones.predictRaces(bests, hrMax));
     if (!thr) {
       el.paceBasis.textContent = "Log a run (or set a threshold pace in ⚙ Settings) to see pace zones.";

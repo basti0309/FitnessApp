@@ -54,8 +54,16 @@ optionally synced across devices via your own Google Drive.
   **HR-adjusted Critical Speed model**: sub-maximal efforts are first scaled
   to estimated max effort from %HRmax (Swain), then a 2-parameter Critical
   Speed fit (with Riegel extrapolation beyond 10 km; Riegel fallback when only
-  one distance is available). The current predicted time and its trend live
-  on the Progress view (with a 3 mo / 6 mo / 1 yr / all timeframe picker).
+  one distance is available).
+- **Recency weighting (current form, not all-time):** best efforts feeding the
+  predictions are weighted by how recent they are — a **42-day fitness
+  half-life**, the time constant shared by Banister's fitness–fatigue model
+  and TrainingPeaks' CTL. Old efforts *fade* (bounded to ≤12%, from detraining
+  data) rather than being dropped, so the fit keeps its distance span but
+  tracks your current fitness; the prediction can rise again if you detrain.
+  Personal records stay all-time (a PR never fades). The current predicted
+  time and its trend live on the Progress view (with a 3 mo / 6 mo / 1 yr /
+  all display timeframe).
 
 ### Progress (analytics)
 - **Stat tiles:** 4-week distance (with delta vs the prior 4 weeks), runs and
@@ -109,6 +117,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | **Recency-weighted predictions**: best efforts feeding the race predictions fade with a 42-day fitness half-life (Banister / TrainingPeaks CTL), bounded ≤12% (detraining data); PRs stay all-time; no re-import needed |
 | 2026-07-02 | **Point-exact personal records**: best efforts computed from raw GPX track points (sliding window, not km-split-aligned), real times for PRs vs GAP for predictions, duplicate imports backfill the new analysis |
 | 2026-07-02 | **Run tab restructure**: GPX-only import (manual run form removed), run history moved to its own History sub-tab, Predictions view folded into Progress |
 | 2026-07-01 | **Grade-adjusted pace** (Minetti 2002) feeding best efforts & predictions; elevation gain/loss with noise filtering; clipboard paste fixed for copied GPX *files* |
