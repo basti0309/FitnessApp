@@ -79,7 +79,10 @@ optionally synced across devices via your own Google Drive.
   **not the segment average**, which is dragged down by the HR's start-up lag
   and made near-all-out efforts look sub-maximal. This is taken relative to your
   **true max HR**, so set it in ⚙ Settings (otherwise it falls back to your
-  highest recorded HR, which under-reads and predicts slightly slow).
+  highest recorded HR, which under-reads and predicts slightly slow). The
+  speed-up is deliberately **conservative** (only part of the HR-implied gain is
+  trusted), so a near-all-out effort's prediction lands at — or just behind — a
+  well-calibrated race predictor rather than promising a time you can't hit.
 - **Recency weighting (current form, not all-time):** best efforts feeding the
   predictions are weighted by how recent they are — a **42-day fitness
   half-life** (~8 weeks; a gentle fade in the spirit of Banister's fitness–fatigue model
@@ -144,7 +147,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
-| 2026-07-02 | GPX distance fix: keep the movement between same-second GPS fixes (watches log several per second) instead of dropping it — was undercounting distance ~8% and mis-measuring best efforts (a 20:14 5k read as 23:40, which made race predictions far too slow). Predictions now scale each effort by its **settled effort HR** (a line fit to the HR over the segment's second half, projected to its end, capped at the real max HR) instead of the segment average — the average is dragged down by the HR's start-up lag, so a near-all-out 5k test looked sub-maximal and over-corrected to 17:58; it now predicts ~20:00 (≈ a fresh Strava estimate). Taken relative to your true max HR (set it in Settings). The start-up HR correction is skipped on interval/test sessions (several long stops), where its single-continuous-run assumption doesn't hold |
+| 2026-07-02 | GPX distance fix: keep the movement between same-second GPS fixes (watches log several per second) instead of dropping it — was undercounting distance ~8% and mis-measuring best efforts (a 20:14 5k read as 23:40, which made race predictions far too slow). Predictions now scale each effort by its **settled effort HR** (a line fit to the HR over the segment's second half, projected to its end, capped at the real max HR) instead of the segment average — the average is dragged down by the HR's start-up lag, so a near-all-out 5k test looked sub-maximal and over-corrected to 17:58; it now predicts ~19:48 on the measurement day (just behind Strava's 19:31, ahead of the actual 20:14) instead of 17:58. The speed-up is deliberately conservative and taken relative to your true max HR (set it in Settings). The start-up HR correction is skipped on interval/test sessions (several long stops), where its single-continuous-run assumption doesn't hold |
 | 2026-07-02 | Prediction trend now plots a recency-corrected point for every day up to today (drifts between runs, snaps on a new run), not just on run days |
 | 2026-07-02 | Predictions: reject a degenerate Critical-Speed fit (implausible D′ / poor goodness-of-fit that predicted e.g. a 2:14 first km) and fall back to the race-like anchor — 5k now ~20:52 for the user's data instead of 22:43; CS still used for clean maximal data |
 | 2026-07-02 | Predictions fixed: anchor the fallback on the most race-like effort (highest %HRmax) instead of the longest run (easy long runs no longer drag the estimate slow); softened recency to an 8-week half-life / 8% cap |
