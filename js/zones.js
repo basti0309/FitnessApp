@@ -255,14 +255,20 @@ const Zones = (() => {
     let predictions, method;
 
     if (cs) {
-      const cs10k = predictCS(cs, 10000) / 10; // 10k pace, for long-race Riegel
       predictions = TARGETS.map((r) => {
         const sec = r.km <= 12 ? predictCS(cs, r.km * 1000) : riegel(10, predictCS(cs, 10000), r.km);
         return { label: r.label, sec, pace: sec / r.km };
       });
-      // sanity: times must increase with distance
-      const ok = predictions.every((p, i) => i === 0 || p.sec > predictions[i - 1].sec) && predictions[0].sec > 0;
-      if (ok) {
+      // Accept CS only when it's actually a good, physiological fit — otherwise
+      // messy submaximal training data yields a degenerate fit that passes a
+      // mere monotonic check yet predicts absurd short races (e.g. 1k in 2:14).
+      const monotonic = predictions.every((p, i) => i === 0 || p.sec > predictions[i - 1].sec) && predictions[0].sec > 0;
+      // goodness of fit: CS must reproduce the corrected efforts it was fit on
+      let se = 0, nse = 0;
+      pts.forEach((p) => { const pr = predictCS(cs, p.d); if (pr > 0) { se += ((pr - p.t) / p.t) ** 2; nse++; } });
+      const rmse = nse ? Math.sqrt(se / nse) : 1;
+      const plausible = cs.Dp <= 350 && cs.criticalPace >= 150 && cs.criticalPace <= 420; // D′ & CS sane
+      if (monotonic && plausible && rmse < 0.05) {
         method = "Critical Speed" + (corrected ? " · HR-adjusted" : "");
         return { method, cs, corrected, predictions };
       }
