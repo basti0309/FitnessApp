@@ -45,7 +45,10 @@ const Progress = (() => {
     const pts = [];
     for (const date of dates) {
       const subset = runs.filter((r) => r.date <= date);
-      const model = Zones.predictRaces(Zones.bestEfforts(subset), hrMaxFor(subset));
+      // recency-weight efforts as of THIS date, so the trend reflects the
+      // form you actually had then (it can rise again if you detrain)
+      const bests = Zones.bestEfforts(subset, { recency: true, asOf: dayMs(date) });
+      const model = Zones.predictRaces(bests, hrMaxFor(subset));
       const p = model && model.predictions.find((q) => q.label === label);
       if (p && isFinite(p.sec) && p.sec > 0) pts.push({ x: dayMs(date), xLabel: date, y: Math.round(p.sec) });
     }

@@ -95,22 +95,51 @@ const Zones = (() => {
     return null;
   }
 
+  // ---- recency weighting (fitness fades with time) ----
+  // Endurance fitness decays roughly exponentially once training eases off.
+  // Two independent, well-validated references converge on the same time
+  // scale: Banister's fitness–fatigue model puts the *fitness* time constant
+  // at ~42–50 days, and TrainingPeaks' Performance Manager (CTL) uses a 42-day
+  // exponentially-weighted average for exactly this "how fit are you now"
+  // question. We use a 42-day half-life. Rather than dropping old efforts (a
+  // hard window is brittle — one stale distance and the Critical-Speed fit
+  // loses its span), we *fade* them: an effort's time is inflated toward a
+  // bounded max as it ages, so recent efforts win selection while an old best
+  // still anchors the regression geometry, just discounted. The cap (~12%) is
+  // set by detraining data (endurance performance falls ~5–20% over weeks to
+  // months of reduced training) so we never fully discard a proven capacity.
+  const RECENCY_HALFLIFE_D = 42;    // Banister fitness τ ≈ TrainingPeaks CTL
+  const RECENCY_MAX_PENALTY = 0.12; // oldest efforts treated ≤12% slower
+  function recencyPenalty(ageDays) {
+    const w = Math.pow(0.5, Math.max(0, ageDays) / RECENCY_HALFLIFE_D); // 1 now → 0 old
+    return 1 + RECENCY_MAX_PENALTY * (1 - w);
+  }
+
   // opts.adjusted=false → real times (PRs); default true → grade-adjusted
   // (prediction input). Runs imported from GPX carry exact point-level bests
   // (run.bests) — preferred over the km-split window approximation.
+  // opts.recency=true → weight efforts by how recent they are (current form);
+  // opts.asOf (ms) is the reference "today" (the trend replays it per date).
   function bestEfforts(runs, opts = {}) {
     const adjusted = opts.adjusted !== false;
+    const recency = opts.recency === true;
+    const asOf = opts.asOf || Date.now();
     const out = [];
     for (const tgt of SEG_TARGETS) {
       let best = null;
       for (const run of runs) {
+        const ageDays = (asOf - Date.parse(run.date + "T00:00:00")) / 86400000;
+        const pf = recency ? recencyPenalty(ageDays) : 1;
         const stored = (run.bests || []).find((b) => Math.abs(b.km - tgt.km) < 0.01);
         const candidates = stored
           ? [{ sec: (adjusted && stored.gapSec) || stored.sec, hr: stored.hr }]
           : [fastestForTarget(lapsOf(run, adjusted), tgt.km), wholeSeg(run, tgt.km, adjusted)].filter(Boolean);
         for (const seg of candidates) {
-          if (!best || seg.sec < best.sec) {
-            best = { label: tgt.label, km: tgt.km, sec: seg.sec, pace: seg.sec / tgt.km, hr: seg.hr, run };
+          const eff = seg.sec * pf;                 // recency-weighted "current" time
+          if (!best || eff < best.eff) {
+            const sec = recency ? eff : seg.sec;    // model sees faded time; PRs see real time
+            best = { label: tgt.label, km: tgt.km, sec, rawSec: seg.sec, eff,
+                     pace: sec / tgt.km, hr: seg.hr, ageDays: Math.round(ageDays), date: run.date, run };
           }
         }
       }
