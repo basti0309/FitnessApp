@@ -132,14 +132,15 @@ const Zones = (() => {
         const pf = recency ? recencyPenalty(ageDays) : 1;
         const stored = (run.bests || []).find((b) => Math.abs(b.km - tgt.km) < 0.01);
         const candidates = stored
-          ? [{ sec: (adjusted && stored.gapSec) || stored.sec, hr: stored.hr }]
+          ? [{ sec: (adjusted && stored.gapSec) || stored.sec, hr: stored.hr, effHr: stored.effHr }]
           : [fastestForTarget(lapsOf(run, adjusted), tgt.km), wholeSeg(run, tgt.km, adjusted)].filter(Boolean);
         for (const seg of candidates) {
           const eff = seg.sec * pf;                 // recency-weighted "current" time
           if (!best || eff < best.eff) {
             const sec = recency ? eff : seg.sec;    // model sees faded time; PRs see real time
             best = { label: tgt.label, km: tgt.km, sec, rawSec: seg.sec, eff,
-                     pace: sec / tgt.km, hr: seg.hr, ageDays: Math.round(ageDays), date: run.date, run };
+                     pace: sec / tgt.km, hr: seg.hr, effHr: seg.effHr ?? null,
+                     ageDays: Math.round(ageDays), date: run.date, run };
           }
         }
       }
@@ -207,6 +208,11 @@ const Zones = (() => {
   }
   // Scale a sub-maximal effort to its estimated max-effort time. velocity ∝
   // %VO2max (Swain), so corrected time = time · (%VO2_now / %VO2_max).
+  // CONSERV damps the speed-up: we trust only part of the HR-implied gain, so a
+  // near-all-out effort's prediction lands at (or just behind) a well-calibrated
+  // race predictor rather than beating it — being off by predicting slightly
+  // slow is far safer than promising a time the runner can't hit.
+  const CONSERV = 0.55;
   function effortCorrect(sec, avgHr, hrMax) {
     if (!avgHr || !hrMax) return { sec, corrected: false };
     const pctNow = avgHr / hrMax;
@@ -215,7 +221,8 @@ const Zones = (() => {
     const vo2Now = (pctNow - 0.37) / 0.64;
     const vo2Max = (pctMax - 0.37) / 0.64;
     if (vo2Now <= 0 || vo2Max <= 0) return { sec, corrected: false };
-    let factor = Math.max(0.85, vo2Now / vo2Max); // cap upscaling at ~+18% speed
+    const raw = Math.max(0.85, vo2Now / vo2Max);   // cap upscaling at ~+18% speed
+    const factor = 1 - CONSERV * (1 - raw);        // conservative: partial trust
     return { sec: sec * factor, corrected: true };
   }
 
@@ -246,9 +253,15 @@ const Zones = (() => {
   function predictRaces(bests, hrMax) {
     if (!bests.length) return null;
     const pts = bests.map((b) => {
-      const c = effortCorrect(b.sec, b.hr, hrMax);
+      // Use the segment's settled effort HR (2nd-half drift endpoint) rather
+      // than its average — the average understates a hard effort because HR
+      // lags at the start, which made near-all-out efforts look sub-maximal and
+      // over-corrected the prediction. Relative to the runner's true (theoretical)
+      // max HR, set in Settings.
+      const hr = b.effHr ?? b.hr;
+      const c = effortCorrect(b.sec, hr, hrMax);
       return { km: b.km, d: b.km * 1000, t: c.sec, corrected: c.corrected, label: b.label,
-        frac: b.hr && hrMax ? b.hr / hrMax : 0 };
+        frac: hr && hrMax ? hr / hrMax : 0 };
     });
     const corrected = pts.some((p) => p.corrected);
     const cs = fitCS(pts);

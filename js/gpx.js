@@ -142,8 +142,11 @@ const GPX = (() => {
       const a = pts[i - 1], b = pts[i];
       let d = haversine(a.lat, a.lon, b.lat, b.lon);
       let dt = (b.time - a.time) / 1000;
-      if (dt <= 0) { cum[i] = cum[i - 1]; continue; }
-      if (dt > PAUSE_GAP) { dt = 0; d = 0; }   // paused — no time, no distance
+      if (dt < 0) { cum[i] = cum[i - 1]; continue; }   // backward clock — skip
+      if (dt > PAUSE_GAP) { dt = 0; d = 0; }            // paused — no time, no distance
+      // dt === 0 keeps its distance (watches log several fixes per second — the
+      // movement between them is real; dropping it undercounts distance ~8% and
+      // wrecks pace/best-efforts), but adds no time.
       cum[i] = cum[i - 1] + d;
       legs.push({ d, dt, a: i - 1, b: i });    // hr filled after HR cleaning
     }
@@ -260,6 +263,32 @@ const GPX = (() => {
       { label: "10 km", m: 10000 }, { label: "15 km", m: 15000 },
       { label: "Half", m: 21097.5 },
     ];
+    // Effort HR of a segment for the prediction model: NOT the average (which
+    // is dragged down by the HR's start-up lag over the first minute), but the
+    // intensity the runner actually settled at. HR drifts up through a hard
+    // effort, so we fit a line to its SECOND HALF and take the projected value
+    // at the segment end — the drift endpoint, capped at the run's real max HR.
+    function effortHr(iA, iB) {
+      const tA = pts[iA].time, tB = pts[iB].time, mid = tA + (tB - tA) / 2;
+      let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0, hMin = Infinity;
+      for (let k = iA; k <= iB; k++) {
+        const h = pts[k].hrUse;
+        if (!isFinite(h)) continue;
+        hMin = Math.min(hMin, h);
+        if (pts[k].time >= mid) {
+          const x = (pts[k].time - mid) / 1000;
+          n++; sx += x; sy += h; sxx += x * x; sxy += x * h;
+        }
+      }
+      if (n < 3 || !isFinite(hMin)) return null;
+      const den = n * sxx - sx * sx;
+      let end = sy / n;                                  // fallback: 2nd-half mean
+      if (Math.abs(den) > 1e-6) {
+        const b = (n * sxy - sx * sy) / den, a = (sy - b * sx) / n;
+        end = a + b * ((tB - mid) / 1000);
+      }
+      return Math.round(Math.max(hMin, Math.min(maxHr || end, end)));
+    }
     const bests = [];
     const N = pts.length - 1;
     for (const tgt of BEST_TARGETS) {
@@ -276,15 +305,19 @@ const GPX = (() => {
             sec: t,
             gapSec: (cumG[j] - cumG[i]) * (tgt.m / d),
             hr: hrT > 0 ? (cumH[j] - cumH[i]) / hrT : null,
+            i, j,
           };
         }
       }
-      if (best) bests.push({
-        label: tgt.label, km: tgt.m / 1000,
-        sec: Math.round(best.sec),
-        gapSec: hasEle ? Math.round(best.gapSec) : null,
-        hr: best.hr ? Math.round(best.hr) : null,
-      });
+      if (best) {
+        bests.push({
+          label: tgt.label, km: tgt.m / 1000,
+          sec: Math.round(best.sec),
+          gapSec: hasEle ? Math.round(best.gapSec) : null,
+          hr: best.hr ? Math.round(best.hr) : null,
+          effHr: best.hr ? effortHr(best.i, best.j) : null,
+        });
+      }
     }
 
     if (dist < 100 || moving < 30) throw new Error("Track too short to import.");
@@ -354,6 +387,20 @@ const GPX = (() => {
     if (withHR.length < 30) return null;
     const t0 = pts[0].time;
     const T = (pts[pts.length - 1].time - t0) / 1000;
+
+    // The reconstruction assumes ONE continuous effort: it learns the HR↔effort
+    // relation from the settled tail and extrapolates it back across the early
+    // window. An interval/test session chopped up by several long stops breaks
+    // that — each segment has its own HR onset, so the tail no longer models the
+    // early reps, and forcing the fit there rebuilds perfectly good data (it was
+    // wrongly flagging a whole 5k test's first 21 min as an artifact). So only
+    // correct a single continuous run: bail out when ≥2 long (>60 s) pauses
+    // split the track. Genuine start-up artifacts occur on continuous runs
+    // (an early false reading, at most one settle stop), which stay eligible.
+    let longPauses = 0;
+    for (let i = 1; i < pts.length; i++)
+      if ((pts[i].time - pts[i - 1].time) / 1000 > 60) longPauses++;
+    if (longPauses >= 2) return null;
 
     // per-point second, speed (from neighbours), grade → flat-equivalent effort
     for (let i = 0; i < pts.length; i++) {

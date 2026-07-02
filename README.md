@@ -50,13 +50,14 @@ optionally synced across devices via your own Google Drive.
   The importer learns the runner's HR↔effort relationship from the settled part
   of the run, detects the initial decoupled window (both too-high and too-low,
   bridging real pauses), and reconstructs it from the effort model plus a
-  physiological onset ramp (τ≈45 s); isolated spikes elsewhere are removed with a
-  Hampel filter. The reconstruction uses an HR↔effort model **fit on the
-  reliable tail of the run** (with a cardiac-drift term) and extrapolated back,
-  so the rebuilt warm-up rises realistically toward the settled HR instead of
-  sitting at a flat average. All HR-based figures (avg/max, splits, zones,
-  effort labels, predictions, max-HR derivation) use the cleaned signal; raw
-  values are kept.
+  physiological onset ramp; isolated spikes elsewhere are removed with a Hampel
+  filter. The model is **fit on the reliable tail of the run** (with a
+  cardiac-drift term) and extrapolated back, so the rebuilt warm-up rises
+  realistically toward the settled HR instead of a flat average. This runs on
+  single continuous runs (skipped on interval/test sessions split by several
+  long stops, where its one-continuous-effort assumption doesn't hold). All
+  HR-based figures use the cleaned signal; raw values are kept and shown by a
+  corrected↔original toggle on the run-detail chart.
 - **Run detail (tap a run in History):** Zepp-style **pace and HR profile**
   charts (filled area, crosshair tooltip), with a **toggle between the corrected
   and the original HR curve** when a correction was applied.
@@ -72,7 +73,16 @@ optionally synced across devices via your own Google Drive.
   one distance is available). When the Critical-Speed fit is unreliable (messy
   training data), it anchors on the **most race-like effort** — the one run at
   the highest %HRmax, which best reflects current all-out ability — rather than
-  the longest run, so an easy long run can't drag the estimate slow.
+  the longest run, so an easy long run can't drag the estimate slow. The %HRmax
+  of an effort uses its **settled effort HR** — a line fit to the HR over the
+  segment's second half, projected to its end (capped at your real max HR) —
+  **not the segment average**, which is dragged down by the HR's start-up lag
+  and made near-all-out efforts look sub-maximal. This is taken relative to your
+  **true max HR**, so set it in ⚙ Settings (otherwise it falls back to your
+  highest recorded HR, which under-reads and predicts slightly slow). The
+  speed-up is deliberately **conservative** (only part of the HR-implied gain is
+  trusted), so a near-all-out effort's prediction lands at — or just behind — a
+  well-calibrated race predictor rather than promising a time you can't hit.
 - **Recency weighting (current form, not all-time):** best efforts feeding the
   predictions are weighted by how recent they are — a **42-day fitness
   half-life** (~8 weeks; a gentle fade in the spirit of Banister's fitness–fatigue model
@@ -137,6 +147,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | GPX distance fix: keep the movement between same-second GPS fixes (watches log several per second) instead of dropping it — was undercounting distance ~8% and mis-measuring best efforts (a 20:14 5k read as 23:40, which made race predictions far too slow). Predictions now scale each effort by its **settled effort HR** (a line fit to the HR over the segment's second half, projected to its end, capped at the real max HR) instead of the segment average — the average is dragged down by the HR's start-up lag, so a near-all-out 5k test looked sub-maximal and over-corrected to 17:58; it now predicts ~19:48 on the measurement day (just behind Strava's 19:31, ahead of the actual 20:14) instead of 17:58. The speed-up is deliberately conservative and taken relative to your true max HR (set it in Settings). The start-up HR correction is skipped on interval/test sessions (several long stops), where its single-continuous-run assumption doesn't hold |
 | 2026-07-02 | Prediction trend now plots a recency-corrected point for every day up to today (drifts between runs, snaps on a new run), not just on run days |
 | 2026-07-02 | Predictions: reject a degenerate Critical-Speed fit (implausible D′ / poor goodness-of-fit that predicted e.g. a 2:14 first km) and fall back to the race-like anchor — 5k now ~20:52 for the user's data instead of 22:43; CS still used for clean maximal data |
 | 2026-07-02 | Predictions fixed: anchor the fallback on the most race-like effort (highest %HRmax) instead of the longest run (easy long runs no longer drag the estimate slow); softened recency to an 8-week half-life / 8% cap |

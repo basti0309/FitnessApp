@@ -54,7 +54,9 @@ const Running = (() => {
         if (dupe) {
           // same run, but stored before newer analysis existed → backfill the
           // point-exact bests / GAP / elevation / HR-cleaning instead of skipping
-          const needsBests = !dupe.bests && run.bests?.length;
+          // re-analyze when bests are missing OR predate a newer field (effHr)
+          const needsBests = run.bests?.length &&
+            (!dupe.bests || dupe.bests.some((b) => b.hr != null && b.effHr === undefined));
           const needsHrFix = run.hrFix && dupe.hrFix === undefined;
           const needsSeries = run.series && !dupe.series;
           if (needsBests || needsHrFix || needsSeries) {
