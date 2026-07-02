@@ -69,10 +69,13 @@ optionally synced across devices via your own Google Drive.
   **HR-adjusted Critical Speed model**: sub-maximal efforts are first scaled
   to estimated max effort from %HRmax (Swain), then a 2-parameter Critical
   Speed fit (with Riegel extrapolation beyond 10 km; Riegel fallback when only
-  one distance is available).
+  one distance is available). When the Critical-Speed fit is unreliable (messy
+  training data), it anchors on the **most race-like effort** — the one run at
+  the highest %HRmax, which best reflects current all-out ability — rather than
+  the longest run, so an easy long run can't drag the estimate slow.
 - **Recency weighting (current form, not all-time):** best efforts feeding the
   predictions are weighted by how recent they are — a **42-day fitness
-  half-life**, the time constant shared by Banister's fitness–fatigue model
+  half-life** (~8 weeks; a gentle fade in the spirit of Banister's fitness–fatigue model
   and TrainingPeaks' CTL. Old efforts *fade* (bounded to ≤12%, from detraining
   data) rather than being dropped, so the fit keeps its distance span but
   tracks your current fitness; the prediction can rise again if you detrain.
@@ -132,6 +135,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | Predictions fixed: anchor the fallback on the most race-like effort (highest %HRmax) instead of the longest run (easy long runs no longer drag the estimate slow); softened recency to an 8-week half-life / 8% cap |
 | 2026-07-02 | HR reconstruction improved: reference model fit on the reliable run tail + cardiac-drift term (rebuilds a realistic rising warm-up, not a flat average); fixed the linear solver |
 | 2026-07-02 | **HR artifact correction** (Variant B): detect the early optical-sensor warm-up window from HR↔effort decoupling (pause-aware) and reconstruct it (effort model + onset ramp) + Hampel despike; feeds all HR calculations, raw kept. **Run-detail pace/HR profile charts** with corrected↔original HR toggle |
 | 2026-07-02 | **Recency-weighted predictions**: best efforts feeding the race predictions fade with a 42-day fitness half-life (Banister / TrainingPeaks CTL), bounded ≤12% (detraining data); PRs stay all-time; no re-import needed |

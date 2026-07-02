@@ -108,8 +108,8 @@ const Zones = (() => {
   // still anchors the regression geometry, just discounted. The cap (~12%) is
   // set by detraining data (endurance performance falls ~5–20% over weeks to
   // months of reduced training) so we never fully discard a proven capacity.
-  const RECENCY_HALFLIFE_D = 42;    // Banister fitness τ ≈ TrainingPeaks CTL
-  const RECENCY_MAX_PENALTY = 0.12; // oldest efforts treated ≤12% slower
+  const RECENCY_HALFLIFE_D = 56;    // ~8 weeks (race-predictor window; gentle Banister/CTL fade)
+  const RECENCY_MAX_PENALTY = 0.08; // oldest efforts treated ≤8% slower
   function recencyPenalty(ageDays) {
     const w = Math.pow(0.5, Math.max(0, ageDays) / RECENCY_HALFLIFE_D); // 1 now → 0 old
     return 1 + RECENCY_MAX_PENALTY * (1 - w);
@@ -247,7 +247,8 @@ const Zones = (() => {
     if (!bests.length) return null;
     const pts = bests.map((b) => {
       const c = effortCorrect(b.sec, b.hr, hrMax);
-      return { km: b.km, d: b.km * 1000, t: c.sec, corrected: c.corrected, label: b.label };
+      return { km: b.km, d: b.km * 1000, t: c.sec, corrected: c.corrected, label: b.label,
+        frac: b.hr && hrMax ? b.hr / hrMax : 0 };
     });
     const corrected = pts.some((p) => p.corrected);
     const cs = fitCS(pts);
@@ -266,11 +267,14 @@ const Zones = (() => {
         return { method, cs, corrected, predictions };
       }
     }
-    // fallback: Riegel from the longest corrected effort
-    pts.sort((a, b) => b.km - a.km);
-    const a = pts[0];
-    predictions = TARGETS.map((r) => { const sec = riegel(a.km, a.t, r.km); return { label: r.label, sec, pace: sec / r.km }; });
-    return { method: "Riegel" + (corrected ? " · HR-adjusted" : ""), cs: null, corrected, predictions, anchorKm: a.km };
+    // fallback (also when CS is unreliable): Riegel from the most RACE-LIKE
+    // effort — the one run at the highest %HRmax best reflects current all-out
+    // ability. Anchoring on the longest effort instead lets an easy long run
+    // drag the whole prediction slow. Tie-break toward the longer distance
+    // (steadier for extrapolation); no-HR data falls back to longest.
+    const anchor = [...pts].sort((x, y) => (y.frac - x.frac) || (y.km - x.km))[0];
+    predictions = TARGETS.map((r) => { const sec = riegel(anchor.km, anchor.t, r.km); return { label: r.label, sec, pace: sec / r.km }; });
+    return { method: "Riegel" + (corrected ? " · HR-adjusted" : ""), cs: null, corrected, predictions, anchorKm: anchor.km };
   }
 
   // ---- Riegel predictions ----
