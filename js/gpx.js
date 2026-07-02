@@ -142,8 +142,11 @@ const GPX = (() => {
       const a = pts[i - 1], b = pts[i];
       let d = haversine(a.lat, a.lon, b.lat, b.lon);
       let dt = (b.time - a.time) / 1000;
-      if (dt <= 0) { cum[i] = cum[i - 1]; continue; }
-      if (dt > PAUSE_GAP) { dt = 0; d = 0; }   // paused — no time, no distance
+      if (dt < 0) { cum[i] = cum[i - 1]; continue; }   // backward clock — skip
+      if (dt > PAUSE_GAP) { dt = 0; d = 0; }            // paused — no time, no distance
+      // dt === 0 keeps its distance (watches log several fixes per second — the
+      // movement between them is real; dropping it undercounts distance ~8% and
+      // wrecks pace/best-efforts), but adds no time.
       cum[i] = cum[i - 1] + d;
       legs.push({ d, dt, a: i - 1, b: i });    // hr filled after HR cleaning
     }
@@ -279,12 +282,14 @@ const GPX = (() => {
           };
         }
       }
-      if (best) bests.push({
-        label: tgt.label, km: tgt.m / 1000,
-        sec: Math.round(best.sec),
-        gapSec: hasEle ? Math.round(best.gapSec) : null,
-        hr: best.hr ? Math.round(best.hr) : null,
-      });
+      if (best) {
+        bests.push({
+          label: tgt.label, km: tgt.m / 1000,
+          sec: Math.round(best.sec),
+          gapSec: hasEle ? Math.round(best.gapSec) : null,
+          hr: best.hr ? Math.round(best.hr) : null,
+        });
+      }
     }
 
     if (dist < 100 || moving < 30) throw new Error("Track too short to import.");
@@ -354,6 +359,20 @@ const GPX = (() => {
     if (withHR.length < 30) return null;
     const t0 = pts[0].time;
     const T = (pts[pts.length - 1].time - t0) / 1000;
+
+    // The reconstruction assumes ONE continuous effort: it learns the HR↔effort
+    // relation from the settled tail and extrapolates it back across the early
+    // window. An interval/test session chopped up by several long stops breaks
+    // that — each segment has its own HR onset, so the tail no longer models the
+    // early reps, and forcing the fit there rebuilds perfectly good data (it was
+    // wrongly flagging a whole 5k test's first 21 min as an artifact). So only
+    // correct a single continuous run: bail out when ≥2 long (>60 s) pauses
+    // split the track. Genuine start-up artifacts occur on continuous runs
+    // (an early false reading, at most one settle stop), which stay eligible.
+    let longPauses = 0;
+    for (let i = 1; i < pts.length; i++)
+      if ((pts[i].time - pts[i - 1].time) / 1000 > 60) longPauses++;
+    if (longPauses >= 2) return null;
 
     // per-point second, speed (from neighbours), grade → flat-equivalent effort
     for (let i = 0; i < pts.length; i++) {
