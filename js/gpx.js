@@ -263,6 +263,32 @@ const GPX = (() => {
       { label: "10 km", m: 10000 }, { label: "15 km", m: 15000 },
       { label: "Half", m: 21097.5 },
     ];
+    // Effort HR of a segment for the prediction model: NOT the average (which
+    // is dragged down by the HR's start-up lag over the first minute), but the
+    // intensity the runner actually settled at. HR drifts up through a hard
+    // effort, so we fit a line to its SECOND HALF and take the projected value
+    // at the segment end — the drift endpoint, capped at the run's real max HR.
+    function effortHr(iA, iB) {
+      const tA = pts[iA].time, tB = pts[iB].time, mid = tA + (tB - tA) / 2;
+      let n = 0, sx = 0, sy = 0, sxx = 0, sxy = 0, hMin = Infinity;
+      for (let k = iA; k <= iB; k++) {
+        const h = pts[k].hrUse;
+        if (!isFinite(h)) continue;
+        hMin = Math.min(hMin, h);
+        if (pts[k].time >= mid) {
+          const x = (pts[k].time - mid) / 1000;
+          n++; sx += x; sy += h; sxx += x * x; sxy += x * h;
+        }
+      }
+      if (n < 3 || !isFinite(hMin)) return null;
+      const den = n * sxx - sx * sx;
+      let end = sy / n;                                  // fallback: 2nd-half mean
+      if (Math.abs(den) > 1e-6) {
+        const b = (n * sxy - sx * sy) / den, a = (sy - b * sx) / n;
+        end = a + b * ((tB - mid) / 1000);
+      }
+      return Math.round(Math.max(hMin, Math.min(maxHr || end, end)));
+    }
     const bests = [];
     const N = pts.length - 1;
     for (const tgt of BEST_TARGETS) {
@@ -279,6 +305,7 @@ const GPX = (() => {
             sec: t,
             gapSec: (cumG[j] - cumG[i]) * (tgt.m / d),
             hr: hrT > 0 ? (cumH[j] - cumH[i]) / hrT : null,
+            i, j,
           };
         }
       }
@@ -288,6 +315,7 @@ const GPX = (() => {
           sec: Math.round(best.sec),
           gapSec: hasEle ? Math.round(best.gapSec) : null,
           hr: best.hr ? Math.round(best.hr) : null,
+          effHr: best.hr ? effortHr(best.i, best.j) : null,
         });
       }
     }
@@ -306,7 +334,7 @@ const GPX = (() => {
       maxHr: maxHr || null,
       rawAvgHr: hrFix ? hrFix.rawAvg : null,
       rawMaxHr: hrFix ? hrFix.rawMax : null,
-      hrFix: hrFix ? { corrected: true, windowSec: hrFix.startupSec, effort: hrFix.effort || null } : null,
+      hrFix: hrFix ? { corrected: true, windowSec: hrFix.windowSec } : null,
       series: buildSeries(pts, cum),
       intervals,
       bests,
@@ -352,18 +380,27 @@ const GPX = (() => {
   // window where measured HR departs from it (in either direction), and rebuild
   // that window from the effort model plus a physiological onset ramp. Isolated
   // spikes anywhere else are removed with a Hampel (median/MAD) filter.
-  // Sets pts[i].hrUse; returns { startupSec, effort, rawAvg, rawMax } or null.
-  // Two independent optical-HR artifacts are handled:
-  //   A) start-up window — a false early reading before the sensor locks on
-  //      (continuous runs only; the reconstruction learns from the settled tail);
-  //   B) sustained-effort under-read — the sensor "locks low" during a hard push,
-  //      reading a flat/low plateau that then jumps to the true value.
+  // Sets pts[i].hrUse; returns { windowSec, rawAvg, rawMax } or null.
   function cleanHR(pts, cum, gradeAt) {
     pts.forEach((p) => { p.hrUse = p.hr; });
     const withHR = pts.filter((p) => isFinite(p.hr) && p.hr > 40);
     if (withHR.length < 30) return null;
     const t0 = pts[0].time;
     const T = (pts[pts.length - 1].time - t0) / 1000;
+
+    // The reconstruction assumes ONE continuous effort: it learns the HR↔effort
+    // relation from the settled tail and extrapolates it back across the early
+    // window. An interval/test session chopped up by several long stops breaks
+    // that — each segment has its own HR onset, so the tail no longer models the
+    // early reps, and forcing the fit there rebuilds perfectly good data (it was
+    // wrongly flagging a whole 5k test's first 21 min as an artifact). So only
+    // correct a single continuous run: bail out when ≥2 long (>60 s) pauses
+    // split the track. Genuine start-up artifacts occur on continuous runs
+    // (an early false reading, at most one settle stop), which stay eligible.
+    let longPauses = 0;
+    for (let i = 1; i < pts.length; i++)
+      if ((pts[i].time - pts[i - 1].time) / 1000 > 60) longPauses++;
+    if (longPauses >= 2) return null;
 
     // per-point second, speed (from neighbours), grade → flat-equivalent effort
     for (let i = 0; i < pts.length; i++) {
@@ -375,7 +412,7 @@ const GPX = (() => {
       pts[i].gapV = v > 0 ? v * (minettiC(gradeAt(cum[i])) / C0) : 0;
     }
 
-    // Hampel despike on the raw series → hrH (isolated spikes removed everywhere)
+    // 1) Hampel despike on the raw series → hrH
     const K = 7;
     for (let i = 0; i < pts.length; i++) {
       if (!isFinite(pts[i].hr)) { pts[i].hrH = pts[i].hr; continue; }
@@ -387,159 +424,66 @@ const GPX = (() => {
       pts[i].hrH = (mad > 0 && Math.abs(pts[i].hr - med) > 3 * mad) ? med : pts[i].hr;
     }
 
-    const rawMax = Math.max(...withHR.map((p) => p.hr));
-    const movHRraw = pts.filter((p) => p.moving && isFinite(p.hr));
-    const rawAvg = Math.round(movHRraw.reduce((s, p) => s + p.hr, 0) / movHRraw.length);
-
-    // An interval/test session split by several long stops isn't one continuous
-    // effort, so the start-up reconstruction (which learns from the settled tail
-    // and extrapolates back) doesn't apply — it would rebuild legitimate data.
-    // The effort under-read (B) still applies; it targets the hard block itself.
-    let longPauses = 0;
-    for (let i = 1; i < pts.length; i++)
-      if ((pts[i].time - pts[i - 1].time) / 1000 > 60) longPauses++;
-    const intervally = longPauses >= 2;
-
-    // ---- A) start-up optical artifact (false early reading) ----------------
-    let startupSec = 0;
+    // 2) reference model  HR ≈ a + b·gapV + c·min  fit on the RELIABLE TAIL
+    // only (last 45 % of the run — past any start-up artifact by construction),
+    // then extrapolated backwards. The drift term (c) matters: at a steady pace
+    // HR still climbs over a run, so a flat baseline would misread that climb.
     const mv = pts.filter((p) => p.moving && isFinite(p.hrH));
-    if (!intervally && mv.length >= 20) {
-      // reference model HR ≈ a + b·gapV + c·min fit on the RELIABLE TAIL only
-      // (last 45 %, past any start-up artifact), then extrapolated backwards.
-      // The drift term (c) matters: at a steady pace HR still climbs over a run.
-      const tailStart = T * 0.55;
-      let tail = mv.filter((p) => p.s >= tailStart);
-      if (tail.length < 20) tail = mv;
-      let rm = fitHRModel(tail, true);
-      if (rm) {
-        rm.c = Math.max(0, Math.min(1.2, rm.c));         // drift 0…1.2 bpm/min
-        const evalM = (m, p) => m.a + m.b * p.gapV + m.c * (p.s / 60);
-        // smoothed residual vs the reference (±15 s, moving)
-        for (let i = 0; i < pts.length; i++) {
-          const p = pts[i];
-          if (!p.moving || !isFinite(p.hrH)) { p.rRes = 0; continue; }
-          let s = 0, n = 0;
-          for (let k = i; k >= 0 && p.s - pts[k].s <= 15; k--)
-            if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
-          for (let k = i + 1; k < pts.length && pts[k].s - p.s <= 15; k++)
-            if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
-          p.rRes = n ? s / n : 0;
-        }
-        // lock-in = start of the first ≥120 s stretch where HR tracks the
-        // reference within ±6 bpm (moving pts; pauses bridged).
-        const SETTLE = 6, SETTLE_DUR = 120, DECOUPLE = 12, MAXFRAC = 0.6;
-        let streak = null, lock = null;
-        for (const p of pts) {
-          if (!p.moving || !isFinite(p.hrH)) continue;
-          if (Math.abs(p.rRes) <= SETTLE) {
-            if (streak == null) streak = p.s;
-            if (p.s - streak >= SETTLE_DUR) { lock = streak; break; }
-          } else streak = null;
-        }
-        if (lock == null) lock = 0;
-        // trigger only for a real artifact: a sustained HR-too-HIGH excursion
-        // (a spike/plateau the sensor invents), not the natural low first minute.
-        const artifact = pts.some((p) => p.moving && p.s < lock && p.rRes > DECOUPLE);
-        if (artifact && lock > 0 && lock <= T * MAXFRAC) {
-          const nearLock = pts.filter((p) => p.moving && isFinite(p.hrH) && p.s >= lock && p.s < lock + 180).map((p) => p.hrH);
-          const Hlock = nearLock.length ? median(nearLock) : evalM(rm, { gapV: rm.b ? median(tail.map((p) => p.gapV)) : 0, s: lock });
-          const startFloor = Math.max(80, Math.round(Hlock - 32));
-          const TAU = 30, ONSET = 60;
-          for (const p of pts) {
-            if (p.s >= lock) { p.hrUse = p.hrH; continue; } // keep despiked reliable HR
-            let e = Math.min(evalM(rm, p), Hlock + 3);       // never above the settled entry
-            if (p.s < ONSET) e = startFloor + (e - startFloor) * (1 - Math.exp(-p.s / TAU));
-            p.hrUse = Math.round(Math.max(40, Math.min(210, Math.max(startFloor - 5, e))));
-          }
-          startupSec = Math.round(lock);
-        }
-      }
+    if (mv.length < 20) return null;
+    const tailStart = T * 0.55;
+    let tail = mv.filter((p) => p.s >= tailStart);
+    if (tail.length < 20) tail = mv;
+    let rm = fitHRModel(tail, true);
+    if (!rm) return null;
+    rm.c = Math.max(0, Math.min(1.2, rm.c));            // drift 0…1.2 bpm/min (early ≤ later)
+    const evalM = (m, p) => m.a + m.b * p.gapV + m.c * (p.s / 60);
+
+    // smoothed residual vs the reference (±15 s, moving)
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (!p.moving || !isFinite(p.hrH)) { p.rRes = 0; continue; }
+      let s = 0, n = 0;
+      for (let k = i; k >= 0 && p.s - pts[k].s <= 15; k--)
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
+      for (let k = i + 1; k < pts.length && pts[k].s - p.s <= 15; k++)
+        if (pts[k].moving && isFinite(pts[k].hrH)) { s += pts[k].hrH - evalM(rm, pts[k]); n++; }
+      p.rRes = n ? s / n : 0;
     }
-
-    // ---- B) sustained-effort HR under-read ("lock-low" during a hard push) --
-    // Optical sensors sometimes lock ~15–25 bpm low through a sustained hard
-    // effort, reading a flat plateau that later jumps to the true value. The
-    // tell-tale is a physiological impossibility: within ONE continuous block
-    // the runner is at equal-or-FASTER pace early but at a LOWER heart rate than
-    // later — faster running can't lower HR (net of drift), so the early HR is
-    // under-read. We rebuild it as a first-order rise from the effort-onset HR
-    // toward the effort's own sustained peak, LIFT-ONLY (never lower a real
-    // reading) and only while still running hard, so recoveries/cool-down are
-    // left untouched. Normal negative-split runs (higher HR because faster) and
-    // easy runs (flat HR) don't match the signature and are left alone.
-    const effort = effortUnderread(pts, cum);
-
-    if (!startupSec && !effort) return null;
-    return { startupSec, effort, rawAvg, rawMax };
-  }
-
-  // Detects & reconstructs the sustained-effort under-read; returns { from, to }
-  // (seconds, the window actually lifted) or null. Anchors on the fastest
-  // continuous hard effort (a distance window, so warm-up / recovery jog /
-  // cool-down are excluded), reads p.s/p.gapV/p.moving/hrH (set by cleanHR) and
-  // lifts p.hrUse in place.
-  function effortUnderread(pts, cum) {
-    const N = pts.length - 1;
-    if (N < 20) return null;
-    // segStart[k] = index that begins the current continuous stretch (a >45 s
-    // gap starts a new one) — keeps the effort window within one stretch.
-    const segStart = new Array(pts.length).fill(0);
-    for (let k = 1; k < pts.length; k++)
-      segStart[k] = ((pts[k].time - pts[k - 1].time) / 1000 > 45) ? k : segStart[k - 1];
-    // fastest continuous window of ≥ target metres (tightest window, min time)
-    const fastest = (target) => {
-      if (cum[N] < target) return null;
-      let best = null, i = 0;
-      for (let j = 1; j <= N; j++) {
-        while (cum[j] - cum[i + 1] >= target) i++;
-        const s = Math.max(i, segStart[j]);
-        if (cum[j] - cum[s] < target) continue;            // would cross a long stop
-        const t = pts[j].s - pts[s].s;
-        if (t > 0 && (!best || t < best.t)) best = { i: s, j, t };
-      }
-      return best;
-    };
-    const win = fastest(5000) || fastest(3000) || fastest(2000);
-    if (!win) return null;
-    const seg = [];
-    for (let k = win.i; k <= win.j; k++)
-      if (pts[k].moving && isFinite(pts[k].hrH)) seg.push(pts[k]);
-    if (seg.length < 20) return null;
-    const bt0 = seg[0].s, span = seg[seg.length - 1].s - bt0;
-    if (span < 240) return null;
-    const avg = (a, f) => a.reduce((s, p) => s + f(p), 0) / a.length;
-    const early = seg.filter((p) => p.s - bt0 < span / 3);
-    const late = seg.filter((p) => p.s - bt0 > 2 * span / 3);
-    if (early.length < 5 || late.length < 5) return null;
-    const eV = avg(early, (p) => p.gapV), lV = avg(late, (p) => p.gapV);
-    const eH = avg(early, (p) => p.hrH), lH = avg(late, (p) => p.hrH);
-    const onset = median(early.map((p) => p.hrH));
-    const sorted = [...seg.map((p) => p.hrH)].sort((a, b) => a - b);
-    const peak = sorted[Math.floor(0.95 * (sorted.length - 1))];   // sustained high
-    // The under-read signature: within ONE continuous effort the late third is
-    // NOT meaningfully faster than the early third (≤8 %), yet HR is far higher
-    // (>18 bpm), AND the early HR sits implausibly low for the effort (≤86 % of
-    // the effort's own sustained peak). A genuine negative split (late much
-    // faster → HR earned) or normal cardiac drift (early HR already high) each
-    // fail one of these, so only a true sensor lock-low triggers.
-    if (!(lV <= eV * 1.08 && lH - eH > 18 && eH <= 0.86 * peak && peak - onset >= 20)) return null;
-    // Rebuild across the whole effort window (warm-up / recovery jog / cool-down
-    // are already outside it by construction), so a brief mid-effort pace dip
-    // can't snap HR back to the suppressed plateau. LIFT-ONLY: a genuinely high
-    // reading is never lowered.
-    const TAU_E = 75;                                       // HR onset τ for a hard effort
-    let from = null, to = null;
-    for (let k = win.i; k <= win.j; k++) {
-      const p = pts[k];
-      if (!isFinite(p.hrH)) continue;
-      const tgt = peak - (peak - onset) * Math.exp(-(p.s - bt0) / TAU_E);
-      if (tgt > p.hrH + 1) {
-        p.hrUse = Math.round(Math.min(210, tgt));
-        if (from == null) from = p.s;
-        to = p.s;
-      }
+    // lock-in = start of the first ≥120 s stretch where HR tracks the reference
+    // within ±6 bpm (moving pts; pauses bridged).
+    const SETTLE = 6, SETTLE_DUR = 120, DECOUPLE = 12, MAXFRAC = 0.6;
+    let streak = null, lock = null;
+    for (const p of pts) {
+      if (!p.moving || !isFinite(p.hrH)) continue;
+      if (Math.abs(p.rRes) <= SETTLE) {
+        if (streak == null) streak = p.s;
+        if (p.s - streak >= SETTLE_DUR) { lock = streak; break; }
+      } else streak = null;
     }
-    return from == null ? null : { from: Math.round(from), to: Math.round(to) };
+    if (lock == null) lock = 0;
+    // trigger only for a real optical artifact: the window must contain a
+    // sustained HR-too-HIGH excursion (a spike/plateau the sensor invents),
+    // not merely the natural low HR of the first minute.
+    const artifact = pts.some((p) => p.moving && p.s < lock && p.rRes > DECOUPLE);
+    if (!artifact || lock <= 0 || lock > T * MAXFRAC) return null;
+
+    const rawMax = Math.max(...withHR.map((p) => p.hr));
+    const movHR = pts.filter((p) => p.moving && isFinite(p.hr));
+    const rawAvg = Math.round(movHR.reduce((s, p) => s + p.hr, 0) / movHR.length);
+
+    // 3) reconstruct [0, lock): drift+effort model, capped at the settled entry,
+    // with a physiological onset ramp over the first 60 s.
+    const nearLock = pts.filter((p) => p.moving && isFinite(p.hrH) && p.s >= lock && p.s < lock + 180).map((p) => p.hrH);
+    const Hlock = nearLock.length ? median(nearLock) : evalM(rm, { gapV: rm.b ? median(tail.map((p) => p.gapV)) : 0, s: lock });
+    const startFloor = Math.max(80, Math.round(Hlock - 32));
+    const TAU = 30, ONSET = 60;
+    for (const p of pts) {
+      if (p.s >= lock) { p.hrUse = p.hrH; continue; }   // keep despiked reliable HR
+      let e = Math.min(evalM(rm, p), Hlock + 3);         // never above the settled entry
+      if (p.s < ONSET) e = startFloor + (e - startFloor) * (1 - Math.exp(-p.s / TAU));
+      p.hrUse = Math.round(Math.max(40, Math.min(210, Math.max(startFloor - 5, e))));
+    }
+    return { windowSec: Math.round(lock), rawAvg, rawMax };
   }
 
   return { parse };
