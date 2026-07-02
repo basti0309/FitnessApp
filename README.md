@@ -135,6 +135,7 @@ optionally synced across devices via your own Google Drive.
 
 | Date | Feature |
 |------|---------|
+| 2026-07-02 | Predictions: reject a degenerate Critical-Speed fit (implausible D′ / poor goodness-of-fit that predicted e.g. a 2:14 first km) and fall back to the race-like anchor — 5k now ~20:52 for the user's data instead of 22:43; CS still used for clean maximal data |
 | 2026-07-02 | Predictions fixed: anchor the fallback on the most race-like effort (highest %HRmax) instead of the longest run (easy long runs no longer drag the estimate slow); softened recency to an 8-week half-life / 8% cap |
 | 2026-07-02 | HR reconstruction improved: reference model fit on the reliable run tail + cardiac-drift term (rebuilds a realistic rising warm-up, not a flat average); fixed the linear solver |
 | 2026-07-02 | **HR artifact correction** (Variant B): detect the early optical-sensor warm-up window from HR↔effort decoupling (pause-aware) and reconstruct it (effort model + onset ramp) + Hampel despike; feeds all HR calculations, raw kept. **Run-detail pace/HR profile charts** with corrected↔original HR toggle |
